@@ -1,4 +1,4 @@
-# CS488 Fall 2015 Project Code
+# CS488 Spring 2020 Project Code
 
 ---
 
