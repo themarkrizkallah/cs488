@@ -16,6 +16,7 @@ build
 *.xcodeproj/project.xcworkspace/xcuserdata
 *.xcscmblueprint
 *.DS_Store
+*.vscode
 imgui.ini
 
 # Ignore Assignment binary names
