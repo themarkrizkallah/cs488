@@ -1,4 +1,4 @@
-// Winter 2020
+// Summer 2020
 
 #include "A1.hpp"
 #include "cs488-framework/GlErrorCheck.hpp"
@@ -21,7 +21,7 @@ static const size_t DIM = 16;
 //----------------------------------------------------------------------------------------
 // Constructor
 A1::A1()
-	: current_col( 0 )
+	: current_col( 0 ), maze(DIM), mazeReady(false)
 {
 	colour[0] = 0.0f;
 	colour[1] = 0.0f;
@@ -46,13 +46,6 @@ void A1::init()
 	// same random numbers
 	cout << "Random number seed = " << rseed << endl;
 	
-
-	// DELETE FROM HERE...
-	Maze m(DIM);
-	m.digMaze();
-	m.printMaze();
-	// ...TO HERE
-	
 	// Set the background colour.
 	glClearColor( 0.3, 0.5, 0.7, 1.0 );
 
@@ -71,6 +64,7 @@ void A1::init()
 	col_uni = m_shader.getUniformLocation( "colour" );
 
 	initGrid();
+	initCube();
 
 	// Set up initial view and projection matrices (need to do this here,
 	// since it depends on the GLFW window being set up correctly).
@@ -134,6 +128,93 @@ void A1::initGrid()
 	delete [] verts;
 
 	CHECK_GL_ERRORS;
+}
+
+void A1::initCube()
+{
+	size_t sz = 8;
+
+	// (x,y,z) for all 8 unique cube vertices
+	vec3 cubeVerts[] = {
+		vec3(0,0,0), // 0
+		vec3(0,0,1), // 1
+		vec3(0,1,0), // 2
+		vec3(0,1,1), // 3
+		vec3(1,0,0), // 4
+		vec3(1,0,1), // 5
+		vec3(1,1,0), // 6
+		vec3(1,1,1)  // 7
+	};
+
+	// 3 indices per triangle, 2 triangles per face, 8 faces
+	size_t numIndices = 3 * 2 * 8;
+
+	// Indices for all 6 faces (2 triangles, counter-clockwise)
+	unsigned int cubeIndices[] = {
+		// Front face
+		0, 4, 6,
+		6, 2, 0,
+
+		// Right face
+		4, 5, 7,
+		7, 6, 4,
+
+		// Back face
+		5, 1, 3,
+		3, 7, 5,
+
+		// Left face
+		1, 0, 2,
+		2, 3, 1,
+
+		// Top face
+		2, 6, 7,
+		7, 3, 2,
+
+		// Bottom face
+		0, 4, 5,
+		5, 1, 0
+	};
+
+	// Create the vertex array to record buffer assignments.
+	glGenVertexArrays(1, &m_cube_vao);
+	glBindVertexArray(m_cube_vao);
+
+	// Generate a vertex buffer object to hold the cube's vertex data
+	glGenBuffers(1, &m_cube_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, m_cube_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sz * sizeof(vec3), cubeVerts, GL_STATIC_DRAW);
+
+	// Specify the means of extracting the position values properly.
+	GLint posAttrib = m_shader.getAttribLocation( "position" );
+	glEnableVertexAttribArray(posAttrib);
+	glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+	// Generate an index buffer object to map the vertices to the triangles
+	glGenBuffers(1, &m_cube_ibo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_cube_ibo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, numIndices * sizeof(unsigned int), cubeIndices, GL_STATIC_DRAW);
+
+	// Reset state to prevent rogue code from messing with *my* 
+	// stuff!
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	CHECK_GL_ERRORS;
+}
+
+void A1::digMaze() 
+{
+	maze.digMaze();
+	maze.printMaze();
+	mazeReady = true;
+}
+
+void A1::resetMaze()
+{
+	maze.reset();
+	mazeReady = false;
 }
 
 //----------------------------------------------------------------------------------------
@@ -211,26 +292,51 @@ void A1::draw()
 {
 	// Create a global transformation for the model (centre it).
 	mat4 W;
+
 	W = glm::translate( W, vec3( -float(DIM)/2.0f, 0, -float(DIM)/2.0f ) );
 
-	m_shader.enable();
-		glEnable( GL_DEPTH_TEST );
+	mat4 origin = W;
 
-		glUniformMatrix4fv( P_uni, 1, GL_FALSE, value_ptr( proj ) );
-		glUniformMatrix4fv( V_uni, 1, GL_FALSE, value_ptr( view ) );
-		glUniformMatrix4fv( M_uni, 1, GL_FALSE, value_ptr( W ) );
+	m_shader.enable();
+		glEnable(GL_DEPTH_TEST);
+
+		glUniformMatrix4fv( P_uni, 1, GL_FALSE, value_ptr(proj) );
+		glUniformMatrix4fv( V_uni, 1, GL_FALSE, value_ptr(view) );
+		glUniformMatrix4fv( M_uni, 1, GL_FALSE, value_ptr(W) );
 
 		// Just draw the grid for now.
-		glBindVertexArray( m_grid_vao );
-		glUniform3f( col_uni, 1, 1, 1 );
-		glDrawArrays( GL_LINES, 0, (3+DIM)*4 );
+		glBindVertexArray(m_grid_vao);
+		glUniform3f(col_uni, 1, 1, 1);
+		glDrawArrays(GL_LINES, 0, (3+DIM)*4);
 
 		// Draw the cubes
+		// 3 indices per triangle, 2 triangles per face, 8 faces
+		if (mazeReady){
+			size_t numIndices = 3 * 2 * 8;
+			glBindVertexArray(m_cube_vao);
+
+			for (int i = 0; i < DIM; ++i) {
+				for (int j = 0; j < DIM; ++j){
+
+					W = glm::translate( W, vec3( j, 0, i ) );
+					glUniformMatrix4fv( M_uni, 1, GL_FALSE, value_ptr( W ) );
+
+					if (maze.getValue(i,j) == 0) {
+
+					}else {
+						glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
+					}
+
+					W = origin;
+				}
+			}
+		}
+
 		// Highlight the active square.
 	m_shader.disable();
 
 	// Restore defaults
-	glBindVertexArray( 0 );
+	glBindVertexArray(0);
 
 	CHECK_GL_ERRORS;
 }
@@ -323,7 +429,26 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 
 	// Fill in with event handling code...
 	if( action == GLFW_PRESS ) {
-		// Respond to some key events.
+		// Quit
+		if (key == GLFW_KEY_Q) {
+			cout << "Q key pressed" << endl;
+			glfwSetWindowShouldClose(m_window, GL_TRUE);
+			eventHandled = true;
+		}
+
+		// Dig Maze
+		if (key == GLFW_KEY_D) {
+			cout << "D key pressed" << endl;
+			digMaze();
+			eventHandled = true;
+		}
+
+		// Reset Maze
+		if (key == GLFW_KEY_R) {
+			cout << "R key pressed" << endl;
+			resetMaze();
+			eventHandled = true;
+		}
 	}
 
 	return eventHandled;

@@ -1,4 +1,4 @@
-// Winter 2020
+// Summer 2020
 
 #pragma once
 
@@ -31,6 +31,13 @@ protected:
 
 private:
 	void initGrid();
+	void initCube();
+	void digMaze();
+	void resetMaze();
+
+	// Fields related to maze object
+	Maze maze;
+	bool mazeReady;
 
 	// Fields related to the shader and uniforms.
 	ShaderProgram m_shader;
@@ -42,6 +49,11 @@ private:
 	// Fields related to grid geometry.
 	GLuint m_grid_vao; // Vertex Array Object
 	GLuint m_grid_vbo; // Vertex Buffer Object
+
+	// Fields related to cubes
+	GLuint m_cube_vao; // Vertex Array Object
+	GLuint m_cube_vbo; // Vertex Buffer Object
+	GLuint m_cube_ibo; // Index Buffer Object
 
 	// Matrices controlling the camera and projection.
 	glm::mat4 proj;
