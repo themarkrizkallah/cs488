@@ -32,10 +32,14 @@ protected:
 private:
 	void initGrid();
 	void initCube();
-	void digMaze();
-	void resetMaze();
+	void initFloor();
+	void initAvatar();
+	
+	void moveAvatar(const int x, const int y); // Moves avatar to (x,y) on the grid
+	void digMaze(); // Digs maze
+	void reset(); // Resets maze, camera, avatar, floor, walls, and colours to defaults
 
-	// Fields related to maze object
+	// Fields related to the maze object
 	Maze maze;
 	bool mazeReady;
 
@@ -50,15 +54,35 @@ private:
 	GLuint m_grid_vao; // Vertex Array Object
 	GLuint m_grid_vbo; // Vertex Buffer Object
 
-	// Fields related to cubes
-	GLuint m_cube_vao; // Vertex Array Object
-	GLuint m_cube_vbo; // Vertex Buffer Object
-	GLuint m_cube_ibo; // Index Buffer Object
+	// Fields related to the blocks (cube).
+	GLuint m_cube_vao; 	 // Vertex Array Object
+	GLuint m_cube_vbo; 	 // Vertex Buffer Object
+	GLuint m_cube_ibo; 	 // Index Buffer Object
+	float blockHeight; 	 // Height of the walls
+	float cubeColour[3]; // Colour of the walls
+
+	// Fields related to the floor
+	GLuint m_floor_vao;   // Vertex Array Object
+	GLuint m_floor_vbo;   // Vertex Buffer Object
+	GLuint m_floor_ibo;   // Index Buffer Object
+	float floorColour[3]; // Colour of the floor
+
+	// fields related to the avatar
+	GLuint m_avatar_vao;   // Vertex Array Object
+	GLuint m_avatar_vbo;   // Vertex Buffer Object
+	GLuint m_avatar_ibo;   // Index Buffer Object
+	int avatarPos[2];      // Avatar's grid position
+	float avatarColour[3]; // Colour of the avatar
 
 	// Matrices controlling the camera and projection.
 	glm::mat4 proj;
 	glm::mat4 view;
 
+	// Colour picker fields
 	float colour[3];
-	int current_col;
+	int current_col; // -1: Unspecified, 0: wall colour, 1: floor colour, 2: avatar colour
+
+	// If true, avatar can move into wall tiles and permanently destroy them
+	// - true while shift is pressed, false otherwise
+	bool removeWall;
 };
