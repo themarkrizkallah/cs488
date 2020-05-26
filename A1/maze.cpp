@@ -2,11 +2,18 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <deque>
+#include <iostream>
+
+#include <glm/glm.hpp>
 
 #include "maze.hpp"
 
+using namespace std;
+using namespace glm;
+
 Maze::Maze( size_t D )
-	: m_dim( D )
+	: m_dim( D ), m_initialized(false)
 {
 	m_values = new int[ D * D ];
 
@@ -17,6 +24,7 @@ void Maze::reset()
 {
 	size_t sz = m_dim*m_dim;
 	std::fill( m_values, m_values + sz, 0 );
+	m_initialized = false;
 }
 
 Maze::~Maze()
@@ -152,4 +160,107 @@ void Maze::digMaze()
 	setValue(m_dim/2-1,m_dim/2+1,0);
 	setValue(m_dim/2,m_dim/2,1);
 	setValue(m_dim/2+1,m_dim/2-1,0);
+
+	m_initialized = true;
+}
+
+int Maze::coordToIndex(int x, int y) const
+{
+	return x * m_dim + y;
+}
+
+deque<vec2> Maze::solveMaze()
+{
+	deque<vec2> sol;
+
+	if(!m_initialized)
+		return sol;
+
+	size_t sz = m_dim * m_dim;
+	vec2 start(0, 0);
+	vec2 end(0, 0);
+
+	// Find maze entrance
+	for(int c = 0; c < m_dim; ++c){
+		if(getValue(0,c) == 0){
+			start.y = c;
+			break;
+		}
+	}
+
+	// Find maze end
+	for(int c = 0; c < m_dim; ++c){
+		if(getValue(m_dim-1, c) == 0){
+			end.x = m_dim - 1;
+			end.y = c;
+			break;
+		}
+	}
+
+	bool visited[sz];
+	std::fill(visited, visited + sz, false);
+
+	vec2 pred[sz];
+	vec2 invalid(-1,-1);
+	std::fill(pred, pred + sz, invalid);
+
+	deque<vec2> queue; // BFS queue
+	queue.push_back(start);
+	
+	int index = coordToIndex(start.x, start.y);
+	visited[index] = true;
+
+	int r, c;
+
+	// Search maze and populate the predicate list
+	while(!queue.empty()){
+		vec2 point = queue.front();
+		queue.pop_front();
+
+		r = point.x;
+		c = point.y;
+
+		// Visit northern neighbour, if it exists
+		index = coordToIndex(r-1, c);
+		if(r != 0 && getValue(r-1, c) == 0 && !visited[index]){
+			pred[index] = point;
+			queue.push_back(vec2(r-1, c));
+			visited[index] = true;
+		}
+
+		// Visit eastern neighbour, if it exists
+		index = coordToIndex(r,c+1);
+		if(c != m_dim-1 && getValue(r,c+1) == 0 && !visited[index]){
+			pred[index] = point;
+			queue.push_back(vec2(r, c+1));
+			visited[index] = true;
+		}
+
+		// Visit southern neighbour, if it exists
+		index = coordToIndex(r+1,c);
+		if(r != m_dim-1 && getValue(r+1,c) == 0 && !visited[index]){
+			pred[index] = point;
+			queue.push_back(vec2(r+1, c));
+			visited[index] = true;
+		}
+
+		// Visit western neighbour, if it exists
+		index = coordToIndex(r,c-1);
+		if(c != 0 && getValue(r,c-1) == 0 && !visited[index]){
+			pred[index] = point;
+			// queue.push_back(vec2(c, r-1));
+			queue.push_back(vec2(r, c-1));
+			visited[index] = true;
+		}
+	}
+
+	// Construct the deque containing the start -> end path
+	vec2 point = end;
+
+	while(point.x != -1 && point.y != -1){
+		sol.push_front(point);
+		point = pred[coordToIndex(point.x, point.y)];
+	}
+
+	return sol;
 }

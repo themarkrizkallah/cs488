@@ -4,6 +4,8 @@
 #include "cs488-framework/GlErrorCheck.hpp"
 
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -216,37 +218,17 @@ void A1::moveAvatar(const int x, const int y)
 			&& maze.getValue(x-1,y-1) == 1)
 			return;
 
-		avatarPos[0] = x;
-		avatarPos[1] = y;
+		avatarPos = vec2(x, y);
 	} else {
-		cout << "Out of bounds" << endl;
+		cout << "Invalid coords (r,c): (" << x << "," << y << ")" << endl;
 	}
-}
-
-//----------------------------------------------------------------------------------------
-// Resets scale, rotation, block height, colours, and maze
-void A1::reset()
-{
-	scale = DEFAULT_SCALE;
-	rotation = 0.0f;
-	rotationRate = 0.0f;
-	blockHeight = DEFAULT_BLOCK_HEIGHT;
-	current_col = -1;
-	changeColour(BLACK, colour);
-	changeColour(WHITE, cubeColour);
-	changeColour(GREEN, floorColour);
-	changeColour(BLACK, avatarColour);
-	moveAvatar(0, 0);
-	maze.reset();
-	mazeReady = false;
-	dragging = false;
-	persist = false;
 }
 
 //----------------------------------------------------------------------------------------
 // Constructor
 A1::A1()
-	: maze(DIM), mazeReady(false), avatar(Sphere(DEFAULT_RADIUS, DEFAULT_LONG, DEFAULT_LAT)), blockHeight(DEFAULT_BLOCK_HEIGHT), current_col(UNSPECIFIED), 
+	: maze(DIM), mazeReady(false), 	mazeSol(deque<vec2>()), mazeSolved(false), mazeSolveActive(false), slowDownSolver(false),
+		avatar(Sphere(DEFAULT_RADIUS, DEFAULT_LONG, DEFAULT_LAT)), blockHeight(DEFAULT_BLOCK_HEIGHT), current_col(UNSPECIFIED), 
 		removeWall(false), scale(DEFAULT_SCALE), rotation(0.0f), rotationRate(0.0f), xPosMouse(0.0f), dragging(false), persist(false)
 {
 	
@@ -298,7 +280,7 @@ void A1::init()
 	initFloor();
 	initAvatar();
 
-	// Set up initial view and projection matrices (need to do this here,
+	// Set up initial view and projection matricesmazeSol (need to do this here,
 	// since it depends on the GLFW window being set up correctly).
 	view = glm::lookAt( 
 		glm::vec3(0.0f, 2.*float(DIM)*2.0*M_SQRT1_2, float(DIM)*2.0*M_SQRT1_2),
@@ -364,7 +346,56 @@ void A1::initGrid()
 	CHECK_GL_ERRORS;
 }
 
+//----------------------------------------------------------------------------------------
+// Reset scale, rotation, block height, colours, and maze
 
+void A1::resetColours()
+{
+	current_col = -1;
+	changeColour(BLACK, colour);
+	changeColour(WHITE, cubeColour);
+	changeColour(GREEN, floorColour);
+	changeColour(BLACK, avatarColour);
+}
+
+
+void A1::resetMazeSolver()
+{
+	mazeIt = mazeSol.cend();
+	mazeSolveActive = false;
+	slowDownSolver = false;
+}
+
+void A1::resetMaze()
+{
+	moveAvatar(0, 0);
+	blockHeight = DEFAULT_BLOCK_HEIGHT;
+
+	maze.reset();
+	mazeReady = false;
+	mazeSol = deque<vec2>();
+	mazeSolved = false;
+}
+
+void A1::resetView(){
+	scale = DEFAULT_SCALE;
+	rotation = 0.0f;
+	rotationRate = 0.0f;
+	dragging = false;
+	persist = false;
+}                    
+
+void A1::reset()
+{
+	resetColours();
+	resetMazeSolver();
+	resetMaze();
+	resetView();
+}
+
+
+//----------------------------------------------------------------------------------------
+// Initialize the cube used in drawing the walls
 void A1::initCube()
 {
 	Cube cube(1.0f);
@@ -398,6 +429,8 @@ void A1::initCube()
 }
 
 
+//----------------------------------------------------------------------------------------
+// Initialize the floor drawn on the NxN maze grid
 void A1::initFloor()
 {
 	size_t sz = 4;
@@ -447,7 +480,8 @@ void A1::initFloor()
 	CHECK_GL_ERRORS;
 }
 
-// Initially identical to initCube
+//----------------------------------------------------------------------------------------
+// Initialize the spherical avatar
 void A1::initAvatar()
 {
 	avatar.computeVerts();
@@ -480,13 +514,36 @@ void A1::initAvatar()
 	CHECK_GL_ERRORS;
 }
 
+//----------------------------------------------------------------------------------------
+// Dig the maze
 void A1::digMaze() 
 {
 	maze.digMaze();
-	maze.printMaze();
 	mazeReady = true;
+	mazeSolved = false;
+	mazeSolveActive = false;
+	mazeIt = mazeSol.cend();
 
 	moveAvatar(0,0);
+}
+
+//----------------------------------------------------------------------------------------
+// Solve the maze
+void A1::solveMaze()
+{
+	if(mazeReady){
+		if(!mazeSolved){
+			mazeSol = maze.solveMaze();
+			mazeSolved = true;
+		}
+		
+		mazeIt = mazeSol.cend();
+		mazeSolveActive = true;
+
+		cout << "Solving maze..." << endl;
+	} else {
+		cout << "Maze is not ready, please dig maze first." << endl;
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -513,9 +570,34 @@ void A1::appLogic()
 			break;
 	}
 
+	// Ensure scale is within required constraints
 	scale = glm::clamp(scale, 0.05f, 2.0f);
+
+	// Rotate maze if the right conditions apply
 	if (dragging || persist) rotation += rotationRate;
+
+	// Ensure block height is within required constraints
 	blockHeight = glm::clamp(blockHeight, 0.0f, MAX_BLOCK_HEIGHT);
+
+	// Actively solving maze, update Avatar's position
+	if(mazeSolveActive){
+		if(mazeIt == mazeSol.cend())   // Move to the maze entrance
+			mazeIt = mazeSol.cbegin();
+		else 
+			++mazeIt; // Move to the next position in the solution path
+
+		if(mazeIt == mazeSol.cend()){ // Reached the end
+			mazeSolveActive = false;
+			slowDownSolver = false;
+		}
+					
+		// Move Avatar to the next appropriate position
+		// Note: The movement is completely tied to framerate, can sleep to slow it down
+		else {
+			moveAvatar((*mazeIt).x+1, (*mazeIt).y+1);
+			if(slowDownSolver) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -541,9 +623,7 @@ void A1::guiLogic()
 			glfwSetWindowShouldClose(m_window, GL_TRUE);
 		}
 
-		if( ImGui::Button("Dig")) {	// glGenBuffers(1, &m_avatar_ibo);
-	// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_avatar_ibo);
-	// glBufferData(GL_ELEMENT_ARRAY_BUFFER, model.numIndices * sizeof(unsigned int), model.indices, GL_STATIC_DRAW);
+		if(ImGui::Button("Dig")) {
 			cout << "Digging..." << endl;
 			digMaze();
 		} ImGui::SameLine();
@@ -567,19 +647,28 @@ void A1::guiLogic()
 		
 		if( ImGui::RadioButton("Wall", &current_col, WALL)){
 			changeColour(colour, cubeColour);
-
 		} ImGui::SameLine();
 
 		if( ImGui::RadioButton("Floor", &current_col, FLOOR)){
 			changeColour(colour, floorColour);
-
 		} ImGui::SameLine();
 
 		if( ImGui::RadioButton("Avatar", &current_col, AVATAR)) {
 			changeColour(colour, avatarColour);
 		}
-
 		ImGui::PopID();
+
+		if(ImGui::Button("Solve Maze")) {
+			solveMaze();
+		} ImGui::SameLine();
+
+		if(ImGui::Checkbox("Slow Down Solver", &slowDownSolver)) {}
+
+		if(ImGui::Button("Print Maze")) {
+			if(mazeReady) maze.printMaze();
+			else cout << "Maze is not ready, please dig maze first." << endl;
+		}
+
 
 /*
 		// For convenience, you can uncomment this to show ImGui's massive
@@ -628,6 +717,7 @@ void A1::draw()
 		glUniform3f(col_uni, WHITE[0], WHITE[1], WHITE[2]);
 		glDrawArrays(GL_LINES, 0, (3+DIM)*4);
 
+		// Number of indices per cube
 		const int numIndices = 3 * 2 * 8;
 
 		// Draw the walls and floor
@@ -647,10 +737,10 @@ void A1::draw()
 					glBindVertexArray(m_cube_vao);
 					glUniform3f(col_uni, cubeColour[0], cubeColour[1], cubeColour[2]);
 
-					// Draw as many layers of blocks as determined by block height
+					// Draw as many layers of blocks as determined by blockHeight
 					for(int m = 0; m < blockHeight; ++m){
 						if (m > 0) W = glm::translate(W, vec3(0, 1, 0));
-						glUniformMatrix4fv( M_uni, 1, GL_FALSE, value_ptr( W ) );
+						glUniformMatrix4fv(M_uni, 1, GL_FALSE, value_ptr(W));
 						glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
 					}
 				}
@@ -662,13 +752,12 @@ void A1::draw()
 
 		// Draw the avatar
 		glBindVertexArray(m_avatar_vao);
-
-		aM = glm::translate(aM, vec3(avatarPos[1], 0, avatarPos[0]) + vec3(avatar.r));
+			
+		aM = glm::translate(aM, vec3(avatarPos.y, 0, avatarPos.x) + vec3(avatar.r));
 		glUniform3f(col_uni, avatarColour[0], avatarColour[1], avatarColour[2]);
 		glUniformMatrix4fv(M_uni, 1, GL_FALSE, value_ptr(aM));
 		glDrawElements(GL_TRIANGLES, avatar.numIndices, GL_UNSIGNED_INT, nullptr);
 
-		// Highlight the active square.
 	m_shader.disable();
 
 	// Restore defaults
@@ -722,7 +811,6 @@ bool A1::mouseMoveEvent(double xPos, double yPos)
 			persist = true;
 
 		xPosMouse = xPos;
-
 		eventHandled = true;
 	}
 
@@ -807,7 +895,7 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			eventHandled = true;
 		}
 
-		// Reset Maze
+		// Reset Settings to defaults
 		if (key == GLFW_KEY_R) {
 			reset();
 			eventHandled = true;
@@ -816,14 +904,14 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 		// Increase block height
 		if (key == GLFW_KEY_SPACE) {
 			if(mazeReady) ++blockHeight;
-			else cout << "Initialize maze first before changing height." << endl;
+			else cout << "Maze is not ready, please dig maze before changing height." << endl;
 			eventHandled = true;
 		}
 
 		// Decrease block height
 		if (key == GLFW_KEY_BACKSPACE) {
 			if(mazeReady) --blockHeight;
-			else cout << "Initialize maze first before changing height." << endl;
+			else cout << "Maze is not ready, please dig maze before changing height." << endl;
 			eventHandled = true;
 		}
 		
@@ -835,44 +923,48 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 
 		// Move avatar up
 		if (key == GLFW_KEY_UP) {
-			x = avatarPos[0]-1;
-			y = avatarPos[1];
+			x = avatarPos.x-1;
+			y = avatarPos.y;
 
 			if(removeWall && x > 0 && x <= DIM) maze.setValue(x-1, y-1, 0);
 
+			resetMazeSolver();
 			moveAvatar(x, y);
 			eventHandled = true;
 		}
 
 		// Move avatar right
 		if (key == GLFW_KEY_RIGHT) {
-			x = avatarPos[0];
-			y = avatarPos[1]+1;
+			x = avatarPos.x;
+			y = avatarPos.y+1;
 
 			if(removeWall && y > 0 && y <= DIM) maze.setValue(x-1, y-1, 0);
 
+			resetMazeSolver();
 			moveAvatar(x, y);
 			eventHandled = true;
 		}
 
 		// Move avatar down
 		if (key == GLFW_KEY_DOWN) {
-			x = avatarPos[0]+1;
-			y = avatarPos[1];
+			x = avatarPos.x+1;
+			y = avatarPos.y;
 
 			if(removeWall && x > 0 && x <= DIM) maze.setValue(x-1, y-1, 0);
-
+			
+			resetMazeSolver();
 			moveAvatar(x, y);
 			eventHandled = true;
 		}
 
 		// Move avatar left
 		if (key == GLFW_KEY_LEFT) {
-			x = avatarPos[0];
-			y = avatarPos[1]-1;
+			x = avatarPos.x;
+			y = avatarPos.y-1;
 
 			if(removeWall && y > 0 && y <= DIM) maze.setValue(x-1, y-1, 0);
 
+			resetMazeSolver();
 			moveAvatar(x, y);
 			eventHandled = true;
 		}
@@ -880,6 +972,7 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 	
 	// Check if any of the shift keys is released
 	if(action == GLFW_RELEASE && (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT)) {
+		mazeSolveActive = false;
 		removeWall = false;
 		eventHandled = true;
 	}

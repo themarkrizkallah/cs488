@@ -3,6 +3,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <deque>
 
 #include "cs488-framework/CS488Window.hpp"
 #include "cs488-framework/OpenGLImport.hpp"
@@ -72,13 +73,25 @@ private:
 
 	// Dig maze
 	void digMaze();
+	void solveMaze();
 
-	// Reset maze, camera, avatar, floor, walls, and colours to defaults                        
-	void reset(); 
+	// Reset maze, camera, avatar, floor, walls, and colours to defaults
+	void resetColours();
+	void resetMaze();
+	void resetMazeSolver();
+	void resetView();                      
+	void reset();
 
 	// Fields related to the maze object
 	Maze maze;
 	bool mazeReady;
+
+	// Fields related to the BONUS maze solver
+	bool mazeSolved;
+	bool mazeSolveActive;
+	bool slowDownSolver;
+	std::deque<glm::vec2> mazeSol;
+	std::deque<glm::vec2>::const_iterator mazeIt;
 
 	// Fields related to the shader and uniforms.
 	ShaderProgram m_shader;
@@ -109,7 +122,7 @@ private:
 	GLuint m_avatar_vbo;   // Vertex Buffer Object
 	GLuint m_avatar_ibo;   // Index Buffer Object
 	Sphere avatar;         // Avatar sphere object
-	int avatarPos[2];      // Avatar's grid position
+	glm::vec2 avatarPos;   // Avatar's grid position
 	float avatarColour[3]; // Colour of the avatar
 
 	// Matrices controlling the camera and projection.
