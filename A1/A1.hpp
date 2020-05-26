@@ -10,6 +10,38 @@
 
 #include "maze.hpp"
 
+
+// Cube struct
+struct Cube {
+	glm::vec3 *verts;
+	unsigned int *indices;
+
+	const size_t numVerts;
+	const size_t numIndices;
+	const float n;
+
+	Cube(float n);
+	~Cube();
+};
+
+// Sphere struct
+struct Sphere {
+	glm::vec3 *verts;
+	unsigned int *indices;
+
+	float r;     // radius
+	float longs; // Number of longitude lines
+	float lats;  // Number of latitude lines
+
+	size_t numVerts;
+	size_t numIndices;
+
+	Sphere(float r, float longs = 360.0f, float lats = 180.0f);
+	~Sphere();
+
+	void computeVerts();
+};
+
 class A1 : public CS488Window {
 public:
 	A1();
@@ -35,9 +67,14 @@ private:
 	void initFloor();
 	void initAvatar();
 	
-	void moveAvatar(const int x, const int y); // Moves avatar to (x,y) on the grid
-	void digMaze(); // Digs maze
-	void reset(); // Resets maze, camera, avatar, floor, walls, and colours to defaults
+	// Move avatar to (x,y) on the grid, if it's a valid position
+	void moveAvatar(const int x, const int y);
+
+	// Dig maze
+	void digMaze();
+
+	// Reset maze, camera, avatar, floor, walls, and colours to defaults                        
+	void reset(); 
 
 	// Fields related to the maze object
 	Maze maze;
@@ -45,9 +82,9 @@ private:
 
 	// Fields related to the shader and uniforms.
 	ShaderProgram m_shader;
-	GLint P_uni; // Uniform location for Projection matrix.
-	GLint V_uni; // Uniform location for View matrix.
-	GLint M_uni; // Uniform location for Model matrix.
+	GLint P_uni;     // Uniform location for Projection matrix.
+	GLint V_uni;     // Uniform location for View matrix.
+	GLint M_uni;     // Uniform location for Model matrix.
 	GLint col_uni;   // Uniform location for cube colour.
 
 	// Fields related to grid geometry.
@@ -67,10 +104,11 @@ private:
 	GLuint m_floor_ibo;   // Index Buffer Object
 	float floorColour[3]; // Colour of the floor
 
-	// fields related to the avatar
+	// Fields related to the avatar
 	GLuint m_avatar_vao;   // Vertex Array Object
 	GLuint m_avatar_vbo;   // Vertex Buffer Object
 	GLuint m_avatar_ibo;   // Index Buffer Object
+	Sphere avatar;         // Avatar sphere object
 	int avatarPos[2];      // Avatar's grid position
 	float avatarColour[3]; // Colour of the avatar
 
@@ -85,4 +123,14 @@ private:
 	// If true, avatar can move into wall tiles and permanently destroy them
 	// - true while shift is pressed, false otherwise
 	bool removeWall;
+
+	// Fields related to camera, scale, and rotation
+	float scale;
+	float rotation;
+	float rotationRate;
+
+	// Fields related to mouse
+	double xPosMouse; // Previous mouse x-position
+	bool dragging;    // True if dragging mouse
+	bool persist;     // Continue rotating grid until next mouse button click
 };

@@ -16,11 +16,26 @@
 using namespace glm;
 using namespace std;
 
-// Constants
+
 static const size_t DIM = 16;
+static const float PI = glm::pi<float>();
+
+// Constants related to the avatar
+const float DEFAULT_RADIUS = 0.5f;
+const float DEFAULT_LONG = 360.0f;
+const float DEFAULT_LAT = 180.0f;
+
+// Constants related to camera, scale, and rotation
+static const float DEFAULT_SCALE = 1.0f;
+static const float SCALE_DELTA = 0.1f;
+static const float ROTATION_FACTOR = 3600.0f; // Magic constant, scales rotation appropriately
+
+// Constants related to blocks
+static const float CUBE_LENGTH = 1.0f;
+static const float DEFAULT_BLOCK_HEIGHT = 1.0f;
 static const float MAX_BLOCK_HEIGHT = 10.0f;
 
-// Constants related to the colour picker
+// Constants related to colours and the colour picker
 static const int UNSPECIFIED = -1;
 static const int WALL = 0;
 static const int FLOOR = 1;
@@ -28,6 +43,7 @@ static const int AVATAR = 2;
 static const float BLACK[] = {0, 0, 0};
 static const float WHITE[] = {1.0f, 1.0f, 1.0f};
 static const float GREEN[] = {0.20f, 0.32f, 0.06f};
+
 
 // Helper to change src's colour to dest's colour
 static void changeColour(const float src[3], float dest[3]) 
@@ -38,9 +54,200 @@ static void changeColour(const float src[3], float dest[3])
 }
 
 //----------------------------------------------------------------------------------------
+// Cube Constructor
+Cube::Cube(float n)
+	: verts(nullptr), indices(nullptr), numVerts(8), numIndices(3*2*8), n(n)
+{
+	vec3 cubeVerts[] = {
+		vec3(0,0,0),   // 0
+		vec3(0,0,n),   // 1
+		vec3(0,n,0),   // 2
+		vec3(0,n,n),   // 3
+		vec3(n,0,0),   // 4
+		vec3(n,0,n),   // 5
+		vec3(n,n,0),   // 6
+		vec3(n,n,n)    // 7
+	};
+
+	unsigned int cubeIndices[] = {
+		// Front face
+		0, 4, 6,
+		6, 2, 0,
+
+		// Right face
+		4, 5, 7,
+		7, 6, 4,
+
+		// Back face
+		5, 1, 3,
+		3, 7, 5,
+
+		// Left face
+		1, 0, 2,
+		2, 3, 1,
+
+		// Top face
+		2, 6, 7,
+		7, 3, 2,
+
+		// Bottom face
+		0, 4, 5,
+		5, 1, 0
+	};
+
+	verts = new vec3[numVerts];
+	indices = new unsigned int[numIndices];
+
+	for(int i = 0; i < numVerts; ++i)
+		verts[i] = cubeVerts[i];
+	
+	for(int i = 0; i < numIndices; ++i)
+		indices[i] = cubeIndices[i];
+}
+
+//----------------------------------------------------------------------------------------
+// Cube Destructor
+Cube::~Cube()
+{
+	if (verts) delete [] verts;
+	if (indices) delete [] indices;
+}
+
+//----------------------------------------------------------------------------------------
+// Sphere Constructor
+Sphere::Sphere(float r, float longs, float lats)
+	: verts(nullptr), indices(nullptr), r(r), longs(longs), lats(lats), numVerts(longs*lats*5), numIndices(longs*lats*6)
+{}
+
+//----------------------------------------------------------------------------------------
+// Cube Destructor
+Sphere::~Sphere()
+{
+	if (verts) delete [] verts;
+	if (indices) delete [] indices;
+}
+
+//----------------------------------------------------------------------------------------
+// Cube Destructor
+void Sphere::computeVerts()
+{
+	verts = new vec3[numVerts];
+	indices = new unsigned int[numIndices];
+
+	int i = 0, j = 0;
+	float x, y, z;
+	float phi, theta;
+
+	for (float lng = 0; lng < longs; ++lng) {
+		for (float lat = lats/2.0f; lat > -(lats/2.0f); --lat) {
+			/* Top triangle*/
+
+			// Vertex 1
+			phi = lat * PI/lats;
+			theta = lng * PI/(longs/2.0f);
+
+			x = r * glm::cos(phi) * glm::cos(theta);
+			y = r * glm::sin(phi);
+			z = r * glm::cos(phi) * glm::sin(theta);
+
+			indices[j++] = i;
+			verts[i++] = vec3(x, y, z);
+
+			// Vertex 2
+			phi = (lat - 1) * PI/lats;
+			theta = lng * PI/(longs/2.0f);
+
+			x = r * glm::cos(phi) * glm::cos(theta);
+			y = r * glm::sin(phi);
+			z = r * glm::cos(phi) * glm::sin(theta);
+
+			indices[j++] = i;
+			verts[i++] = vec3(x, y, z);
+
+			// Vertex 3
+			phi = lat * PI/lats;
+			theta = (lng + 1) * PI/(longs/2.0f);
+
+			x = r * glm::cos(phi) * glm::cos(theta);
+			y = r * glm::sin(phi);
+			z = r * glm::cos(phi) * glm::sin(theta);
+
+			indices[j++] = i;
+			verts[i++] = vec3(x, y, z);
+
+			/* Bottom triangle*/
+
+			// Vertex 1
+			phi = (lat-1) * PI/lats;
+			theta = lng * PI/(longs/2.0f);
+
+			x = r * glm::cos(phi) * glm::cos(theta);
+			y = r * glm::sin(phi);
+			z = r * glm::cos(phi) * glm::sin(theta);
+
+			indices[j++] = i;
+			verts[i++] = vec3(x, y, z);
+
+			// Vertex 2 (identical to Triangle 1 vertex 3)
+			indices[j++] = i-2;
+
+			// Vertex 3
+			phi = (lat-1) * PI/lats;
+			theta = (lng+1) * PI/(longs/2.0f);
+
+			x = r * glm::cos(phi) * glm::cos(theta);
+			y = r * glm::sin(phi);
+			z = r * glm::cos(phi) * glm::sin(theta);
+
+			indices[j++] = i;
+			verts[i++] = vec3(x, y, z);
+		}
+	}
+}
+
+//----------------------------------------------------------------------------------------
+// Moves the avatar to (x,y) on the maze, (0,0) being the top left outer ring
+void A1::moveAvatar(const int x, const int y)
+{
+	// Verify that the new location is valid
+	if(x >= 0 && x <= DIM+1 && y >= 0 && y <= DIM+1){
+		// Make sure you don't collide with a wall
+		if(blockHeight > 0.0f && mazeReady && x > 0 && y > 0 && x <= DIM && y <= DIM 
+			&& maze.getValue(x-1,y-1) == 1)
+			return;
+
+		avatarPos[0] = x;
+		avatarPos[1] = y;
+	} else {
+		cout << "Out of bounds" << endl;
+	}
+}
+
+//----------------------------------------------------------------------------------------
+// Resets scale, rotation, block height, colours, and maze
+void A1::reset()
+{
+	scale = DEFAULT_SCALE;
+	rotation = 0.0f;
+	rotationRate = 0.0f;
+	blockHeight = DEFAULT_BLOCK_HEIGHT;
+	current_col = -1;
+	changeColour(BLACK, colour);
+	changeColour(WHITE, cubeColour);
+	changeColour(GREEN, floorColour);
+	changeColour(BLACK, avatarColour);
+	moveAvatar(0, 0);
+	maze.reset();
+	mazeReady = false;
+	dragging = false;
+	persist = false;
+}
+
+//----------------------------------------------------------------------------------------
 // Constructor
 A1::A1()
-	: current_col(UNSPECIFIED), maze(DIM), mazeReady(false), blockHeight(1.0f), removeWall(false)
+	: maze(DIM), mazeReady(false), avatar(Sphere(DEFAULT_RADIUS, DEFAULT_LONG, DEFAULT_LAT)), blockHeight(DEFAULT_BLOCK_HEIGHT), current_col(UNSPECIFIED), 
+		removeWall(false), scale(DEFAULT_SCALE), rotation(0.0f), rotationRate(0.0f), xPosMouse(0.0f), dragging(false), persist(false)
 {
 	
 	changeColour(BLACK, colour); // Set colour picker to black
@@ -94,14 +301,16 @@ void A1::init()
 	// Set up initial view and projection matrices (need to do this here,
 	// since it depends on the GLFW window being set up correctly).
 	view = glm::lookAt( 
-		glm::vec3( 0.0f, 2.*float(DIM)*2.0*M_SQRT1_2, float(DIM)*2.0*M_SQRT1_2 ),
-		glm::vec3( 0.0f, 0.0f, 0.0f ),
-		glm::vec3( 0.0f, 1.0f, 0.0f ) );
+		glm::vec3(0.0f, 2.*float(DIM)*2.0*M_SQRT1_2, float(DIM)*2.0*M_SQRT1_2),
+		glm::vec3(0.0f, 0.0f, 0.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f));
 
 	proj = glm::perspective( 
-		glm::radians( 30.0f ),
-		float( m_framebufferWidth ) / float( m_framebufferHeight ),
-		1.0f, 1000.0f );
+		glm::radians(30.0f),
+		float(m_framebufferWidth) / float(m_framebufferHeight),
+		1.0f, 1000.0f);
+
+	CHECK_GL_ERRORS;
 }
 
 void A1::initGrid()
@@ -155,51 +364,10 @@ void A1::initGrid()
 	CHECK_GL_ERRORS;
 }
 
+
 void A1::initCube()
 {
-	size_t sz = 8;
-
-	// (x,y,z) for all 8 unique cube vertices
-	vec3 cubeVerts[] = {
-		vec3(0,0,0), // 0
-		vec3(0,0,1), // 1
-		vec3(0,1,0), // 2
-		vec3(0,1,1), // 3
-		vec3(1,0,0), // 4
-		vec3(1,0,1), // 5
-		vec3(1,1,0), // 6
-		vec3(1,1,1)  // 7
-	};
-
-	// 3 indices per triangle, 2 triangles per face, 8 faces
-	size_t numIndices = 3 * 2 * 8;
-
-	// Indices for all 6 faces (2 triangles, counter-clockwise)
-	unsigned int cubeIndices[] = {
-		// Front face
-		0, 4, 6,
-		6, 2, 0,
-
-		// Right face
-		4, 5, 7,
-		7, 6, 4,
-
-		// Back face
-		5, 1, 3,
-		3, 7, 5,
-
-		// Left face
-		1, 0, 2,
-		2, 3, 1,
-
-		// Top face
-		2, 6, 7,
-		7, 3, 2,
-
-		// Bottom face
-		0, 4, 5,
-		5, 1, 0
-	};
+	Cube cube(1.0f);
 
 	// Create the vertex array to record buffer assignments.
 	glGenVertexArrays(1, &m_cube_vao);
@@ -208,7 +376,7 @@ void A1::initCube()
 	// Generate a vertex buffer object to hold the cube's vertex data
 	glGenBuffers(1, &m_cube_vbo);
 	glBindBuffer(GL_ARRAY_BUFFER, m_cube_vbo);
-	glBufferData(GL_ARRAY_BUFFER, sz * sizeof(vec3), cubeVerts, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, cube.numIndices * sizeof(vec3), cube.verts, GL_STATIC_DRAW);
 
 	// Specify the means of extracting the position values properly.
 	GLint posAttrib = m_shader.getAttribLocation( "position" );
@@ -218,7 +386,7 @@ void A1::initCube()
 	// Generate an index buffer object to map the vertices to the triangles
 	glGenBuffers(1, &m_cube_ibo);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_cube_ibo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, numIndices * sizeof(unsigned int), cubeIndices, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, cube.numIndices * sizeof(unsigned int), cube.indices, GL_STATIC_DRAW);
 
 	// Reset state to prevent rogue code from messing with *my* 
 	// stuff!
@@ -228,6 +396,7 @@ void A1::initCube()
 
 	CHECK_GL_ERRORS;
 }
+
 
 void A1::initFloor()
 {
@@ -281,49 +450,7 @@ void A1::initFloor()
 // Initially identical to initCube
 void A1::initAvatar()
 {
-	size_t sz = 8;
-
-	// (x,y,z) for all 8 unique cube vertices
-	vec3 cubeVerts[] = {
-		vec3(0,0,0), // 0
-		vec3(0,0,1), // 1
-		vec3(0,1,0), // 2
-		vec3(0,1,1), // 3
-		vec3(1,0,0), // 4
-		vec3(1,0,1), // 5
-		vec3(1,1,0), // 6
-		vec3(1,1,1)  // 7
-	};
-
-	// 3 indices per triangle, 2 triangles per face, 8 faces
-	size_t numIndices = 3 * 2 * 8;
-
-	// Indices for all 6 faces (2 triangles, counter-clockwise)
-	unsigned int cubeIndices[] = {
-		// Front face
-		0, 4, 6,
-		6, 2, 0,
-
-		// Right face
-		4, 5, 7,
-		7, 6, 4,
-
-		// Back face
-		5, 1, 3,
-		3, 7, 5,
-
-		// Left face
-		1, 0, 2,
-		2, 3, 1,
-
-		// Top face
-		2, 6, 7,
-		7, 3, 2,
-
-		// Bottom face
-		0, 4, 5,
-		5, 1, 0
-	};
+	avatar.computeVerts();
 
 	// Create the vertex array to record buffer assignments.
 	glGenVertexArrays(1, &m_avatar_vao);
@@ -332,7 +459,7 @@ void A1::initAvatar()
 	// Generate a vertex buffer object to hold the cube's vertex data
 	glGenBuffers(1, &m_avatar_vbo);
 	glBindBuffer(GL_ARRAY_BUFFER, m_avatar_vbo);
-	glBufferData(GL_ARRAY_BUFFER, sz * sizeof(vec3), cubeVerts, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, avatar.numVerts * sizeof(vec3), avatar.verts, GL_STATIC_DRAW);
 
 	// Specify the means of extracting the position values properly.
 	GLint posAttrib = m_shader.getAttribLocation( "position" );
@@ -342,7 +469,7 @@ void A1::initAvatar()
 	// Generate an index buffer object to map the vertices to the triangles
 	glGenBuffers(1, &m_avatar_ibo);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_avatar_ibo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, numIndices * sizeof(unsigned int), cubeIndices, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, avatar.numIndices * sizeof(unsigned int), avatar.indices, GL_STATIC_DRAW);
 
 	// Reset state to prevent rogue code from messing with *my* 
 	// stuff!
@@ -353,22 +480,6 @@ void A1::initAvatar()
 	CHECK_GL_ERRORS;
 }
 
-void A1::moveAvatar(const int x, const int y)
-{
-	// Verify that the new location is valid
-	if(x >= 0 && x <= DIM+1 && y >= 0 && y <= DIM+1){
-		// Make sure you don't collide with a wall
-		if(blockHeight > 0.0f && mazeReady && x > 0 && y > 0 && x <= DIM && y <= DIM 
-			&& maze.getValue(x-1,y-1) == 1)
-			return;
-
-		avatarPos[0] = x;
-		avatarPos[1] = y;
-	} else {
-		cout << "Out of bounds" << endl;
-	}
-}
-
 void A1::digMaze() 
 {
 	maze.digMaze();
@@ -376,22 +487,6 @@ void A1::digMaze()
 	mazeReady = true;
 
 	moveAvatar(0,0);
-}
-
-void A1::reset()
-{
-	current_col = -1;
-	changeColour(BLACK, colour);
-	changeColour(WHITE, cubeColour);
-	changeColour(GREEN, floorColour);
-	changeColour(BLACK, avatarColour);
-
-	blockHeight = 1.0f;
-
-	moveAvatar(0, 0);
-
-	maze.reset();
-	mazeReady = false;
 }
 
 //----------------------------------------------------------------------------------------
@@ -418,6 +513,8 @@ void A1::appLogic()
 			break;
 	}
 
+	scale = glm::clamp(scale, 0.05f, 2.0f);
+	if (dragging || persist) rotation += rotationRate;
 	blockHeight = glm::clamp(blockHeight, 0.0f, MAX_BLOCK_HEIGHT);
 }
 
@@ -444,7 +541,9 @@ void A1::guiLogic()
 			glfwSetWindowShouldClose(m_window, GL_TRUE);
 		}
 
-		if( ImGui::Button("Dig")) {
+		if( ImGui::Button("Dig")) {	// glGenBuffers(1, &m_avatar_ibo);
+	// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_avatar_ibo);
+	// glBufferData(GL_ELEMENT_ARRAY_BUFFER, model.numIndices * sizeof(unsigned int), model.indices, GL_STATIC_DRAW);
 			cout << "Digging..." << endl;
 			digMaze();
 		} ImGui::SameLine();
@@ -509,6 +608,8 @@ void A1::draw()
 {
 	// Create a global transformation for the model (centre it).
 	mat4 W;
+	W = glm::scale(W, vec3(scale));
+	W = glm::rotate(W, 2*PI*rotation, vec3(0,1,0));
 	W = glm::translate(W, vec3(-float(DIM)/2.0f, 0, -float(DIM)/2.0f));
 
 	mat4 modelOrigin = W; // A copy of the original model transformation matrix
@@ -530,14 +631,13 @@ void A1::draw()
 		const int numIndices = 3 * 2 * 8;
 
 		// Draw the walls and floor
-		for (int i = 0; i < DIM+2; ++i){
-			for (int j = 0; j < DIM+2; ++j){
-				W = glm::translate(W, vec3(j-1, 0, i-1));
+		for (int i = 0; i < DIM; ++i){
+			for (int j = 0; j < DIM; ++j){
+				W = glm::translate(W, vec3(j, 0, i));
 				glUniformMatrix4fv(M_uni, 1, GL_FALSE, value_ptr(W));
 
 				// Draw floor
-				if (blockHeight == 0 || i == 0 || j == 0 || i > DIM || j > DIM 
-					|| maze.getValue(i-1,j-1) == 0) {
+				if (blockHeight == 0 || maze.getValue(i,j) == 0) {
 					glBindVertexArray(m_floor_vao);
 					glUniform3f(col_uni, floorColour[0], floorColour[1], floorColour[2]);
 					glDrawElements(GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, nullptr);
@@ -562,11 +662,11 @@ void A1::draw()
 
 		// Draw the avatar
 		glBindVertexArray(m_avatar_vao);
-		aM = glm::translate(aM, vec3(avatarPos[1], 0, avatarPos[0]));
 
+		aM = glm::translate(aM, vec3(avatarPos[1], 0, avatarPos[0]) + vec3(avatar.r));
 		glUniform3f(col_uni, avatarColour[0], avatarColour[1], avatarColour[2]);
 		glUniformMatrix4fv(M_uni, 1, GL_FALSE, value_ptr(aM));
-		glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
+		glDrawElements(GL_TRIANGLES, avatar.numIndices, GL_UNSIGNED_INT, nullptr);
 
 		// Highlight the active square.
 	m_shader.disable();
@@ -612,6 +712,18 @@ bool A1::mouseMoveEvent(double xPos, double yPos)
 		// Probably need some instance variables to track the current
 		// rotation amount, and maybe the previous X position (so 
 		// that you can rotate relative to the *change* in X.
+		if (dragging) {
+			double xDelta = xPos - xPosMouse;
+			rotation += xDelta / ROTATION_FACTOR;
+			rotationRate = xDelta / ROTATION_FACTOR;
+		}
+
+		if(ImGui::IsMouseReleased(GLFW_MOUSE_BUTTON_LEFT))
+			persist = true;
+
+		xPosMouse = xPos;
+
+		eventHandled = true;
 	}
 
 	return eventHandled;
@@ -627,6 +739,15 @@ bool A1::mouseButtonInputEvent(int button, int actions, int mods) {
 	if (!ImGui::IsMouseHoveringAnyWindow()) {
 		// The user clicked in the window.  If it's the left
 		// mouse button, initiate a rotation.
+		if (button == GLFW_MOUSE_BUTTON_LEFT && actions == GLFW_PRESS) {
+			dragging = true;
+			persist = false;
+			eventHandled = true;
+		}
+		if (button == GLFW_MOUSE_BUTTON_LEFT && actions == GLFW_RELEASE) {
+			dragging = false;
+			eventHandled = true;
+		}
 	}
 
 	return eventHandled;
@@ -640,6 +761,14 @@ bool A1::mouseScrollEvent(double xOffSet, double yOffSet) {
 	bool eventHandled(false);
 
 	// Zoom in or out.
+	if(yOffSet > 0){
+		scale += SCALE_DELTA;
+		eventHandled = true;
+
+	} else if(yOffSet < 0) {
+		scale -= SCALE_DELTA;
+		eventHandled = true;
+	}
 
 	return eventHandled;
 }
@@ -697,7 +826,7 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			else cout << "Initialize maze first before changing height." << endl;
 			eventHandled = true;
 		}
-
+		
 		if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
 			cout << "HULK SMASH!" << endl;
 			removeWall = true;
