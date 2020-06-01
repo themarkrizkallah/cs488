@@ -524,7 +524,8 @@ void A1::digMaze()
 	mazeSolveActive = false;
 	mazeIt = mazeSol.cend();
 
-	moveAvatar(0,0);
+	vec2 mazeStart = maze.mazeStart();
+	moveAvatar(mazeStart.x+1, mazeStart.y+1);
 }
 
 //----------------------------------------------------------------------------------------
@@ -535,12 +536,12 @@ void A1::solveMaze()
 		if(!mazeSolved){
 			mazeSol = maze.solveMaze();
 			mazeSolved = true;
+			cout << "Solving maze..." << endl;
 		}
 		
 		mazeIt = mazeSol.cend();
 		mazeSolveActive = true;
 
-		cout << "Solving maze..." << endl;
 	} else {
 		cout << "Maze is not ready, please dig maze first." << endl;
 	}

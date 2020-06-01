@@ -169,24 +169,26 @@ int Maze::coordToIndex(int x, int y) const
 	return x * m_dim + y;
 }
 
-deque<vec2> Maze::solveMaze()
+
+vec2 Maze::mazeStart() const 
 {
-	deque<vec2> sol;
+	vec2 start(0,0);
 
-	if(!m_initialized)
-		return sol;
-
-	size_t sz = m_dim * m_dim;
-	vec2 start(0, 0);
-	vec2 end(0, 0);
-
-	// Find maze entrance
+	// Find maze start
 	for(int c = 0; c < m_dim; ++c){
 		if(getValue(0,c) == 0){
 			start.y = c;
 			break;
 		}
 	}
+
+	return start;
+}
+
+
+vec2 Maze::mazeEnd() const
+{
+	vec2 end(0,0);
 
 	// Find maze end
 	for(int c = 0; c < m_dim; ++c){
@@ -196,6 +198,20 @@ deque<vec2> Maze::solveMaze()
 			break;
 		}
 	}
+
+	return end;
+}
+
+deque<vec2> Maze::solveMaze()
+{
+	deque<vec2> sol;
+
+	if(!m_initialized)
+		return sol;
+
+	size_t sz = m_dim * m_dim;
+	vec2 start = mazeStart();
+	vec2 end = mazeEnd();
 
 	bool visited[sz];
 	std::fill(visited, visited + sz, false);
@@ -248,7 +264,6 @@ deque<vec2> Maze::solveMaze()
 		index = coordToIndex(r,c-1);
 		if(c != 0 && getValue(r,c-1) == 0 && !visited[index]){
 			pred[index] = point;
-			// queue.push_back(vec2(c, r-1));
 			queue.push_back(vec2(r, c-1));
 			visited[index] = true;
 		}

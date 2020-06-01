@@ -23,6 +23,8 @@ public:
 	void digMaze();
 	void printMaze(); // for debugging
 
+	glm::vec2 mazeStart() const;
+	glm::vec2 mazeEnd() const;
 	std::deque<glm::vec2> solveMaze();
 
 private:

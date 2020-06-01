@@ -32,7 +32,7 @@ With regards to the avatar's starting position, I assumed `(0,0)` to be the top 
 With regards to the shift key functionality, the right or left shift keys can be used. Either one is sufficient to trigger Hulk mode!
 
 ## Dig and Reset buttons
-Both the `Dig` and `Reset` buttons (and their corresponding hotkeys) move the avatar to `(0,0)`
+The `Dig` button digs a new maze and moves the avatar to the start of the maze. The `Reset` button clears the maze and all walls as well as moves the avatar to `(0,0)`.
 
 ### Growing/Shrinking bars
 Space and Backspace keys increase block height by 1 unit as expected. With regards to *how* the walls grow/shrink, I kept track of the required height in a `blockHeight` field and rendered **multiple** layers of blocks on top of each other. This functionality could have been also implemented by incrementing the `y` values of the vertices used in rendering the "top face". That being said, updating the `y` values would have required constant rewriting of the buffer object containing the cube. Since I was unsure of which one was the better approach, I simply chose to render multiple layers of blocks if applicable.
