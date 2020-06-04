@@ -10,38 +10,8 @@
 #include "cs488-framework/ShaderProgram.hpp"
 
 #include "maze.hpp"
-
-
-// Cube struct
-struct Cube {
-	glm::vec3 *verts;
-	unsigned int *indices;
-
-	const size_t numVerts;
-	const size_t numIndices;
-	const float n;
-
-	Cube(float n);
-	~Cube();
-};
-
-// Sphere struct
-struct Sphere {
-	glm::vec3 *verts;
-	unsigned int *indices;
-
-	float r;     // radius
-	float longs; // Number of longitude lines
-	float lats;  // Number of latitude lines
-
-	size_t numVerts;
-	size_t numIndices;
-
-	Sphere(float r, float longs = 360.0f, float lats = 180.0f);
-	~Sphere();
-
-	void computeVerts();
-};
+#include "sphere.hpp"
+#include "cube.hpp"
 
 class A1 : public CS488Window {
 public:

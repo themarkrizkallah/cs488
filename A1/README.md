@@ -1,7 +1,8 @@
 # m2rizkal - A1 Submission
 
 ## Compilation
-No changes with respect to compilation steps. 
+No changes with respect to compilation steps.
+Added `sphere.hpp`, `cube.hpp` and their respective `.cpp` files.
 
 Simply go into `cs488/` and run
 

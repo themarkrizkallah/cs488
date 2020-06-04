@@ -1,5 +1,6 @@
 // Summer 2020
 
+#include "sphere.hpp"
 #include "A1.hpp"
 #include "cs488-framework/GlErrorCheck.hpp"
 
@@ -15,10 +16,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+
 using namespace glm;
 using namespace std;
 
-
+// Maze dimension and PI respectively
 static const size_t DIM = 16;
 static const float PI = glm::pi<float>();
 
@@ -47,7 +49,8 @@ static const float WHITE[] = {1.0f, 1.0f, 1.0f};
 static const float GREEN[] = {0.20f, 0.32f, 0.06f};
 
 
-// Helper to change src's colour to dest's colour
+//----------------------------------------------------------------------------------------
+// Change src's colour to dest's colour
 static void changeColour(const float src[3], float dest[3]) 
 {
 	dest[0] = src[0];
@@ -55,157 +58,6 @@ static void changeColour(const float src[3], float dest[3])
 	dest[2] = src[2];
 }
 
-//----------------------------------------------------------------------------------------
-// Cube Constructor
-Cube::Cube(float n)
-	: verts(nullptr), indices(nullptr), numVerts(8), numIndices(3*2*8), n(n)
-{
-	vec3 cubeVerts[] = {
-		vec3(0,0,0),   // 0
-		vec3(0,0,n),   // 1
-		vec3(0,n,0),   // 2
-		vec3(0,n,n),   // 3
-		vec3(n,0,0),   // 4
-		vec3(n,0,n),   // 5
-		vec3(n,n,0),   // 6
-		vec3(n,n,n)    // 7
-	};
-
-	unsigned int cubeIndices[] = {
-		// Front face
-		0, 4, 6,
-		6, 2, 0,
-
-		// Right face
-		4, 5, 7,
-		7, 6, 4,
-
-		// Back face
-		5, 1, 3,
-		3, 7, 5,
-
-		// Left face
-		1, 0, 2,
-		2, 3, 1,
-
-		// Top face
-		2, 6, 7,
-		7, 3, 2,
-
-		// Bottom face
-		0, 4, 5,
-		5, 1, 0
-	};
-
-	verts = new vec3[numVerts];
-	indices = new unsigned int[numIndices];
-
-	for(int i = 0; i < numVerts; ++i)
-		verts[i] = cubeVerts[i];
-	
-	for(int i = 0; i < numIndices; ++i)
-		indices[i] = cubeIndices[i];
-}
-
-//----------------------------------------------------------------------------------------
-// Cube Destructor
-Cube::~Cube()
-{
-	if (verts) delete [] verts;
-	if (indices) delete [] indices;
-}
-
-//----------------------------------------------------------------------------------------
-// Sphere Constructor
-Sphere::Sphere(float r, float longs, float lats)
-	: verts(nullptr), indices(nullptr), r(r), longs(longs), lats(lats), numVerts(longs*lats*5), numIndices(longs*lats*6)
-{}
-
-//----------------------------------------------------------------------------------------
-// Cube Destructor
-Sphere::~Sphere()
-{
-	if (verts) delete [] verts;
-	if (indices) delete [] indices;
-}
-
-//----------------------------------------------------------------------------------------
-// Cube Destructor
-void Sphere::computeVerts()
-{
-	verts = new vec3[numVerts];
-	indices = new unsigned int[numIndices];
-
-	int i = 0, j = 0;
-	float x, y, z;
-	float phi, theta;
-
-	for (float lng = 0; lng < longs; ++lng) {
-		for (float lat = lats/2.0f; lat > -(lats/2.0f); --lat) {
-			/* Top triangle*/
-
-			// Vertex 1
-			phi = lat * PI/lats;
-			theta = lng * PI/(longs/2.0f);
-
-			x = r * glm::cos(phi) * glm::cos(theta);
-			y = r * glm::sin(phi);
-			z = r * glm::cos(phi) * glm::sin(theta);
-
-			indices[j++] = i;
-			verts[i++] = vec3(x, y, z);
-
-			// Vertex 2
-			phi = (lat - 1) * PI/lats;
-			theta = lng * PI/(longs/2.0f);
-
-			x = r * glm::cos(phi) * glm::cos(theta);
-			y = r * glm::sin(phi);
-			z = r * glm::cos(phi) * glm::sin(theta);
-
-			indices[j++] = i;
-			verts[i++] = vec3(x, y, z);
-
-			// Vertex 3
-			phi = lat * PI/lats;
-			theta = (lng + 1) * PI/(longs/2.0f);
-
-			x = r * glm::cos(phi) * glm::cos(theta);
-			y = r * glm::sin(phi);
-			z = r * glm::cos(phi) * glm::sin(theta);
-
-			indices[j++] = i;
-			verts[i++] = vec3(x, y, z);
-
-			/* Bottom triangle*/
-
-			// Vertex 1
-			phi = (lat-1) * PI/lats;
-			theta = lng * PI/(longs/2.0f);
-
-			x = r * glm::cos(phi) * glm::cos(theta);
-			y = r * glm::sin(phi);
-			z = r * glm::cos(phi) * glm::sin(theta);
-
-			indices[j++] = i;
-			verts[i++] = vec3(x, y, z);
-
-			// Vertex 2 (identical to Triangle 1 vertex 3)
-			indices[j++] = i-2;
-
-			// Vertex 3
-			phi = (lat-1) * PI/lats;
-			theta = (lng+1) * PI/(longs/2.0f);
-
-			x = r * glm::cos(phi) * glm::cos(theta);
-			y = r * glm::sin(phi);
-			z = r * glm::cos(phi) * glm::sin(theta);
-
-			indices[j++] = i;
-			verts[i++] = vec3(x, y, z);
-		}
-	}
-}
 
 //----------------------------------------------------------------------------------------
 // Moves the avatar to (x,y) on the maze, (0,0) being the top left outer ring
@@ -275,6 +127,7 @@ void A1::init()
 	M_uni = m_shader.getUniformLocation( "M" );
 	col_uni = m_shader.getUniformLocation( "colour" );
 
+	// Initialize the grid, cubes, floor, and avatar (sphere)
 	initGrid();
 	initCube();
 	initFloor();
@@ -348,7 +201,6 @@ void A1::initGrid()
 
 //----------------------------------------------------------------------------------------
 // Reset scale, rotation, block height, colours, and maze
-
 void A1::resetColours()
 {
 	current_col = -1;
@@ -359,6 +211,8 @@ void A1::resetColours()
 }
 
 
+//----------------------------------------------------------------------------------------
+// Reset the BONUS maze solver
 void A1::resetMazeSolver()
 {
 	mazeIt = mazeSol.cend();
@@ -366,6 +220,8 @@ void A1::resetMazeSolver()
 	slowDownSolver = false;
 }
 
+//----------------------------------------------------------------------------------------
+// Reset the fields relevant to the maze
 void A1::resetMaze()
 {
 	moveAvatar(0, 0);
@@ -377,6 +233,8 @@ void A1::resetMaze()
 	mazeSolved = false;
 }
 
+//----------------------------------------------------------------------------------------
+// Reset the view, scale, and mouse related fields
 void A1::resetView(){
 	scale = DEFAULT_SCALE;
 	rotation = 0.0f;
@@ -385,6 +243,8 @@ void A1::resetView(){
 	persist = false;
 }                    
 
+//----------------------------------------------------------------------------------------
+// Reset the colours, maze, view, and BONUS maze solver
 void A1::reset()
 {
 	resetColours();
@@ -484,6 +344,7 @@ void A1::initFloor()
 // Initialize the spherical avatar
 void A1::initAvatar()
 {
+	// Programatically compute the vertices necessary to render the sphere
 	avatar.computeVerts();
 
 	// Create the vertex array to record buffer assignments.
@@ -529,7 +390,7 @@ void A1::digMaze()
 }
 
 //----------------------------------------------------------------------------------------
-// Solve the maze
+// Solve the maze (BONUS)
 void A1::solveMaze()
 {
 	if(mazeReady){
@@ -659,7 +520,7 @@ void A1::guiLogic()
 		}
 		ImGui::PopID();
 
-		if(ImGui::Button("Solve Maze")) {
+		if(ImGui::Button("Solve Maze")) { // BONUS
 			solveMaze();
 		} ImGui::SameLine();
 
@@ -808,7 +669,7 @@ bool A1::mouseMoveEvent(double xPos, double yPos)
 			rotationRate = xDelta / ROTATION_FACTOR;
 		}
 
-		if(ImGui::IsMouseReleased(GLFW_MOUSE_BUTTON_LEFT))
+		if(ImGui::IsMouseReleased(GLFW_MOUSE_BUTTON_LEFT)) // Check if we need to persist
 			persist = true;
 
 		xPosMouse = xPos;
@@ -833,6 +694,8 @@ bool A1::mouseButtonInputEvent(int button, int actions, int mods) {
 			persist = false;
 			eventHandled = true;
 		}
+
+		// User clicked mouse, stop rotation
 		if (button == GLFW_MOUSE_BUTTON_LEFT && actions == GLFW_RELEASE) {
 			dragging = false;
 			eventHandled = true;
@@ -916,6 +779,7 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			eventHandled = true;
 		}
 		
+		// Hulk Smash mode! (Remove blocks while holding shift)
 		if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
 			cout << "HULK SMASH!" << endl;
 			removeWall = true;
@@ -927,6 +791,7 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			x = avatarPos.x-1;
 			y = avatarPos.y;
 
+			// Remove wall if shift is held
 			if(removeWall && x > 0 && x <= DIM) maze.setValue(x-1, y-1, 0);
 
 			resetMazeSolver();
@@ -939,7 +804,9 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			x = avatarPos.x;
 			y = avatarPos.y+1;
 
-			if(removeWall && y > 0 && y <= DIM) maze.setValue(x-1, y-1, 0);
+			// Remove wall if shift is held
+			if(removeWall && y > 0 && y <= DIM) 
+				maze.setValue(x-1, y-1, 0);
 
 			resetMazeSolver();
 			moveAvatar(x, y);
@@ -951,7 +818,9 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			x = avatarPos.x+1;
 			y = avatarPos.y;
 
-			if(removeWall && x > 0 && x <= DIM) maze.setValue(x-1, y-1, 0);
+			// Remove wall if shift is held
+			if(removeWall && x > 0 && x <= DIM) 
+				maze.setValue(x-1, y-1, 0);
 			
 			resetMazeSolver();
 			moveAvatar(x, y);
@@ -963,7 +832,9 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 			x = avatarPos.x;
 			y = avatarPos.y-1;
 
-			if(removeWall && y > 0 && y <= DIM) maze.setValue(x-1, y-1, 0);
+			// Remove wall if shift is held
+			if(removeWall && y > 0 && y <= DIM) 
+				maze.setValue(x-1, y-1, 0);
 
 			resetMazeSolver();
 			moveAvatar(x, y);
@@ -971,7 +842,7 @@ bool A1::keyInputEvent(int key, int action, int mods) {
 		}
 	}
 	
-	// Check if any of the shift keys is released
+	// Check if any of the shift keys are released
 	if(action == GLFW_RELEASE && (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT)) {
 		mazeSolveActive = false;
 		removeWall = false;
