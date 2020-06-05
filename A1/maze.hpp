@@ -1,6 +1,10 @@
-// Winter 2020
+// Summer 2020
 
 #pragma once
+
+#include <deque>
+
+#include <glm/glm.hpp>
 
 class Maze
 {
@@ -18,9 +22,17 @@ public:
 
 	void digMaze();
 	void printMaze(); // for debugging
+
+	glm::vec2 mazeStart() const;
+	glm::vec2 mazeEnd() const;
+	std::deque<glm::vec2> solveMaze();
+
 private:
 	size_t m_dim;
 	int *m_values;
+	bool m_initialized;
+
 	void recDigMaze(int r, int c);
 	int numNeighbors(int r, int c);
+	int coordToIndex(int x, int y) const;
 };
