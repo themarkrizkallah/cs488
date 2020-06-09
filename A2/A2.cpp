@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #include "A2.hpp"
 #include "cs488-framework/GlErrorCheck.hpp"
@@ -12,6 +12,11 @@ using namespace std;
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/io.hpp>
 using namespace glm;
+
+
+static const vec3 RED = vec3(255.0f, 0.0f, 0.0f);
+static const vec3 BLUE = vec3(0.0f, 255.0f, 0.0f);
+static const vec3 GREEN = vec3(0.0f, 0.0f, 255.0f);
 
 //----------------------------------------------------------------------------------------
 // Constructor
@@ -40,6 +45,70 @@ A2::~A2()
 }
 
 //----------------------------------------------------------------------------------------
+// Generate vertices for a cube in MCS (right-handed coordinate system)
+vector<vec4> A2::generateCubeVerts() const
+{
+	// (x,y,z,1), right-handed coordinate system, y up, x right, z "from" the screen
+	vector<vec4> verts = {
+		// Front face
+		vec4(-1, -1, 1, 1),  // bottom left,  0
+		vec4(1, -1, 1, 1),   // bottom right, 1
+		vec4(-1, 1, 1, 1),   // top left,     2
+		vec4(1, 1, 1, 1),    // top right,    3
+
+		// Back face
+		vec4(-1, -1, -1, 1), // bottom left,  4
+		vec4(1, -1, -1, 1),  // bottom right, 5
+		vec4(-1, 1, -1, 1),  // top left,     6
+		vec4(1, 1, -1, 1),   // top right,    7
+	};
+
+	return verts;
+}
+
+//----------------------------------------------------------------------------------------
+// Generate lines for a cube from m_c_verts
+vector<Line> A2::generateCubeLines() const
+{
+	// Cube vertex indices
+	// FBL = front bottom left vertex, BTR = back top right vertex, etc.
+	enum c_vertex {
+		FBL,
+		FBR,
+		FTL,
+		FTR,
+		BBL,
+		BBR,
+		BTL,
+		BTR
+	};
+
+	vector<Line> lines;
+
+	// Front face, in counterclockwise order for readability
+	lines.push_back(make_pair(m_c_verts[FBL], m_c_verts[FBR])); // bottom line
+	lines.push_back(make_pair(m_c_verts[FBR], m_c_verts[FTR])); // right line
+	lines.push_back(make_pair(m_c_verts[FTR], m_c_verts[FTL])); // top line
+	lines.push_back(make_pair(m_c_verts[FTL], m_c_verts[FBL])); // left line
+
+	// Right face, in counterclockwise order for readability
+	lines.push_back(make_pair(m_c_verts[FBR], m_c_verts[BBR])); // bottom line
+	lines.push_back(make_pair(m_c_verts[FTR], m_c_verts[BTR])); // top line
+
+	// Back face, in counterclockwise order for readability
+	lines.push_back(make_pair(m_c_verts[BBL], m_c_verts[BBR])); // bottom line
+	lines.push_back(make_pair(m_c_verts[BBR], m_c_verts[BTR])); // right line
+	lines.push_back(make_pair(m_c_verts[BTR], m_c_verts[BTL])); // top line
+	lines.push_back(make_pair(m_c_verts[BTL], m_c_verts[BBL])); // left line
+
+	// Left face, in counterclockwise order for readability
+	lines.push_back(make_pair(m_c_verts[FBL], m_c_verts[BBL])); // bottom line
+	lines.push_back(make_pair(m_c_verts[FTL], m_c_verts[BTL])); // top line
+
+	return lines;
+}
+
+//----------------------------------------------------------------------------------------
 /*
  * Called once, at program start.
  */
@@ -57,6 +126,9 @@ void A2::init()
 	generateVertexBuffers();
 
 	mapVboDataToVertexAttributeLocation();
+
+	// Init cube vertices
+	m_c_verts = generateCubeVerts();
 }
 
 //----------------------------------------------------------------------------------------
@@ -191,25 +263,35 @@ void A2::appLogic()
 	// Call at the beginning of frame, before drawing lines:
 	initLineData();
 
-	// Draw outer square:
+	float s = 0.5f;
+	m_c_lines = generateCubeLines();
+
+	// Draw the front square
 	setLineColour(vec3(1.0f, 0.7f, 0.8f));
-	drawLine(vec2(-0.5f, -0.5f), vec2(0.5f, -0.5f));
-	drawLine(vec2(0.5f, -0.5f), vec2(0.5f, 0.5f));
-	drawLine(vec2(0.5f, 0.5f), vec2(-0.5f, 0.5f));
-	drawLine(vec2(-0.5f, 0.5f), vec2(-0.5f, -0.5f));
+	for(int i = 6; i < 10; ++i){
+		Line line = m_c_lines[i];
+		drawLine(vec2(line.first.x*s, line.first.y*s), vec2(line.second.x*s, line.second.y*s));
+	}
+
+	// // Draw outer square:
+	// setLineColour(vec3(1.0f, 0.7f, 0.8f));
+	// drawLine(vec2(-0.5f, -0.5f), vec2(0.5f, -0.5f));
+	// drawLine(vec2(0.5f, -0.5f), vec2(0.5f, 0.5f));
+	// drawLine(vec2(0.5f, 0.5f), vec2(-0.5f, 0.5f));
+	// drawLine(vec2(-0.5f, 0.5f), vec2(-0.5f, -0.5f));
 
 
-	// Draw inner square:
-	setLineColour(vec3(0.2f, 1.0f, 1.0f));
-	drawLine(vec2(-0.25f, -0.25f), vec2(0.25f, -0.25f));
-	drawLine(vec2(0.25f, -0.25f), vec2(0.25f, 0.25f));
-	drawLine(vec2(0.25f, 0.25f), vec2(-0.25f, 0.25f));
-	drawLine(vec2(-0.25f, 0.25f), vec2(-0.25f, -0.25f));
+	// // Draw inner square:
+	// setLineColour(vec3(0.2f, 1.0f, 1.0f));
+	// drawLine(vec2(-0.25f, -0.25f), vec2(0.25f, -0.25f));
+	// drawLine(vec2(0.25f, -0.25f), vec2(0.25f, 0.25f));
+	// drawLine(vec2(0.25f, 0.25f), vec2(-0.25f, 0.25f));
+	// drawLine(vec2(-0.25f, 0.25f), vec2(-0.25f, -0.25f));
 }
 
 //----------------------------------------------------------------------------------------
 /*
- * Called once per frame, after appLogic(), but before the draw() method.
+ * Called once per frame, before guiLogic().
  */
 void A2::guiLogic()
 {

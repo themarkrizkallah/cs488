@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #pragma once
 
@@ -14,6 +14,10 @@
 // in one shot, rather than reallocating each frame.
 const GLsizei kMaxVertices = 1000;
 
+// Number of vertices needed for a 3D cube
+const unsigned int c_NumVerts = 8;
+
+typedef std::pair<glm::vec4, glm::vec4> Line;
 
 // Convenience class for storing vertex data in CPU memory.
 // Data should be copied over to GPU memory via VBO storage before rendering.
@@ -62,6 +66,12 @@ protected:
 			const glm::vec2 & v1
 	);
 
+	std::vector<glm::vec4> generateCubeVerts() const;
+	std::vector<Line> generateCubeLines() const;
+
+	std::vector<glm::vec4> generateGnomonVerts() const;
+	std::vector<Line> generateGnomonLines() const;
+
 	ShaderProgram m_shader;
 
 	GLuint m_vao;            // Vertex Array Object
@@ -72,4 +82,11 @@ protected:
 
 	glm::vec3 m_currentLineColour;
 
+	// Model
+	std::vector<glm::vec4> m_c_verts; // Cube vertices
+	std::vector<Line> m_c_lines;      // Cube lines
+	std::vector<glm::vec4> m_g_verts; // Gnomon vertices
+	std::vector<Line> m_g_lines;      // Gnomon lines
+
+	// 
 };
