@@ -18,6 +18,7 @@ const GLsizei kMaxVertices = 1000;
 const unsigned int c_NumVerts = 8;
 
 typedef std::pair<glm::vec4, glm::vec4> Line;
+typedef std::pair<glm::vec2, glm::vec2> Line2D;
 
 // Convenience class for storing vertex data in CPU memory.
 // Data should be copied over to GPU memory via VBO storage before rendering.
@@ -66,11 +67,17 @@ protected:
 			const glm::vec2 & v1
 	);
 
-	std::vector<glm::vec4> generateCubeVerts() const;
-	std::vector<Line> generateCubeLines() const;
+	void drawLineInViewport(const Line &line);
 
-	std::vector<glm::vec4> generateGnomonVerts() const;
-	std::vector<Line> generateGnomonLines() const;
+	void drawCube();
+	void drawGnomon(bool model = true);
+	void drawViewport();
+
+	void reset();
+
+	std::vector<Line> generateCubeLines(std::vector<glm::vec4> &verts) const;
+	std::vector<Line> generateGnomonLines(std::vector<glm::vec4> &verts) const;
+	std::vector<Line> generateViewportLines() const;
 
 	ShaderProgram m_shader;
 
@@ -83,10 +90,64 @@ protected:
 	glm::vec3 m_currentLineColour;
 
 	// Model
-	std::vector<glm::vec4> m_c_verts; // Cube vertices
-	std::vector<Line> m_c_lines;      // Cube lines
-	std::vector<glm::vec4> m_g_verts; // Gnomon vertices
-	std::vector<Line> m_g_lines;      // Gnomon lines
+	std::vector<glm::vec4> c_verts; // Cube vertices
+	std::vector<glm::vec4> g_verts; // Gnomon vertices
 
-	// 
+	std::vector<glm::vec4> generateCubeVerts() const;
+	std::vector<glm::vec4> generateGnomonVerts() const;
+
+	glm::vec4 homogenize(const glm::vec4 &v) const;
+	glm::vec2 pointToNDC(const glm::vec4 &point) const;
+
+	// Transformation matrices
+	glm::mat4 M; // Model matrix
+	glm::mat4 S; // Scale matrix
+	glm::mat4 V; // View matrix
+	glm::mat4 P; // Projection matrix
+
+	enum Axis {
+		X,
+		Y,
+		Z
+	};
+
+	glm::mat4 translationMatrix(const glm::vec3 &p, bool translateTo = false) const;
+	glm::mat4 generateModelMatrix() const;
+	glm::mat4 generateScaleMatrix(float s = 1.0f) const;
+	glm::mat4 generateViewMatrix() const;
+	glm::mat4 generateProjectionMatrix() const;
+
+	// Viewport related fields
+	float viewXL, viewXR;
+	float viewYB, viewYT;
+
+	// View and projection related fields
+	float aspect;
+	float fov;
+	float near, far;
+
+	enum Mode {
+		RotateView,
+		TranslateView,
+		Perspective,
+		RotateModel,
+		TranslateModel,
+		ScaleModel,
+		Viewport,
+		EndMode
+	};
+	Mode mode;
+
+	// Methods to handle transformations
+	void rotateView(double xPos, double yPos);
+	void translateView(double xPos, double yPos);
+	void perspective(double xPos, double yPos);
+	void rotateModel(double xPos, double yPos);
+	void translateModel(double xPos, double yPos);
+	void scaleModel(double xPos, double yPos);
+	void viewport(double xPos, double yPos);
+
+	// Mouse related fields
+	float xPrev, yPrev;
+	bool leftPressed, middlePressed, rightPressed;
 };
