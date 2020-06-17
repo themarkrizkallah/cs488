@@ -67,17 +67,17 @@ protected:
 			const glm::vec2 & v1
 	);
 
+	void reset();
+
+	glm::vec4 homogenize(const glm::vec4 &p) const;
+	Line homogenizeLine(const Line &line) const;
+	glm::vec2 pointToNDC(const glm::vec4 &point) const;
+
 	void drawLineInViewport(const Line &line);
 
 	void drawCube();
 	void drawGnomon(bool model = true);
 	void drawViewport();
-
-	void reset();
-
-	std::vector<Line> generateCubeLines(std::vector<glm::vec4> &verts) const;
-	std::vector<Line> generateGnomonLines(std::vector<glm::vec4> &verts) const;
-	std::vector<Line> generateViewportLines() const;
 
 	ShaderProgram m_shader;
 
@@ -96,8 +96,9 @@ protected:
 	std::vector<glm::vec4> generateCubeVerts() const;
 	std::vector<glm::vec4> generateGnomonVerts() const;
 
-	glm::vec4 homogenize(const glm::vec4 &v) const;
-	glm::vec2 pointToNDC(const glm::vec4 &point) const;
+	std::vector<Line> generateCubeLines(std::vector<glm::vec4> &verts) const;
+	std::vector<Line> generateGnomonLines(std::vector<glm::vec4> &verts) const;
+	std::vector<Line> generateViewportLines() const;
 
 	// Transformation matrices
 	glm::mat4 M; // Model matrix
@@ -106,7 +107,7 @@ protected:
 	glm::mat4 P; // Projection matrix
 
 	enum Axis {
-		X,
+		X = 0,
 		Y,
 		Z
 	};
@@ -118,13 +119,14 @@ protected:
 	glm::mat4 generateProjectionMatrix() const;
 
 	// Viewport related fields
-	float viewXL, viewXR;
-	float viewYB, viewYT;
+	float viewX, viewY;
+	float viewWidth, viewHeight;
 
 	// View and projection related fields
-	float aspect;
 	float fov;
 	float near, far;
+
+	bool clip(Line &line) const;
 
 	enum Mode {
 		RotateView,
@@ -150,4 +152,5 @@ protected:
 	// Mouse related fields
 	float xPrev, yPrev;
 	bool leftPressed, middlePressed, rightPressed;
+	bool getMousePos;
 };
