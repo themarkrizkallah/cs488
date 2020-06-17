@@ -1238,6 +1238,38 @@ bool A2::keyInputEvent (
 	bool eventHandled(false);
 
 	// Fill in with event handling code...
+	switch(key){
+		case GLFW_KEY_O:
+			mode = RotateView;
+			eventHandled = true;
+			break;
+		case GLFW_KEY_E:
+			mode = TranslateView;
+			eventHandled = true;
+			break;
+		case GLFW_KEY_P:
+			mode = Perspective;
+			eventHandled = true;
+			break;
+		case GLFW_KEY_R:
+			mode = RotateModel;
+			eventHandled = true;
+			break;
+		case GLFW_KEY_T:
+			mode = TranslateModel;
+			eventHandled = true;
+			break;
+		case GLFW_KEY_S:
+			mode = ScaleModel;
+			eventHandled = true;
+			break;
+		case GLFW_KEY_V:
+			mode = Viewport;
+			eventHandled = true;
+			break;
+		default:
+			break;
+	}
 
 	return eventHandled;
 }
