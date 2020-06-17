@@ -42,6 +42,7 @@ static const float NEAR_FAR_FACTOR = 25.0f;
 static const float TRANSLATE_FACTOR = 10.0f;
 static const float SCALE_FACTOR = 1.03f;
 static const float ROTATION_FACTOR = 2.0f;
+static const float SHEAR_FACTOR = 10.0f;
 
 // Default values
 static const float MARGIN = 0.05f;
@@ -56,7 +57,8 @@ static const string MODES[] = {
 	"Rotate Model",
 	"Translate Model",
 	"Scale Model",
-	"Viewport"
+	"Viewport",
+	"Shear Model" // BONUS
 };
 
 
@@ -629,9 +631,9 @@ void A2::drawGnomon(bool model)
 		RED,     // Colour of x-axis (model)
 		GREEN,   // Colour of y-axis (model)
 		BLUE,    // Colour of z-axis (model)
-		CYAN,    // Colour of x-axis (view)  
-		MAGENTA, // Colour of y-axis (view)          
-		YELLOW   // Colour of z-axis (view)    
+		CYAN,    // Colour of x-axis (world)  
+		MAGENTA, // Colour of y-axis (world)          
+		YELLOW   // Colour of z-axis (world)    
 	};
 
 	vector<vec4> gnomonVerts;
@@ -951,6 +953,71 @@ void A2::viewport(double xPos, double yPos)
 }
 
 //----------------------------------------------------------------------------------------
+// Shear the model (Course Notes 6.9) - BONUS
+void A2::shearModel(double xPos, double yPos)
+{
+	const float xDelta = (xPos - xPrev) / m_framebufferWidth;
+	float factor = xDelta * SHEAR_FACTOR;
+
+	// Shear the cube about its local x-axis
+	if (leftPressed) {
+		mat4 B(
+			vec4(1.0f, 0.0f, 0.0f, 0.0f),
+			vec4(factor, 1.0f, factor, 0.0f),
+			vec4(0.0f, 0.0f, 1.0f, 0.0f),
+			vec4(0.0f, 0.0f, 0.0f, 1.0f)
+		);
+
+		mat4 G(
+			vec4(1.0f, 0.0f, 0.0f, 0.0f),
+			vec4(0.0f, 1.0f, 0.0f, 0.0f),
+			vec4(factor, factor, 1.0f, 0.0f),
+			vec4(0.0f, 0.0f, 0.0f, 1.0f)
+		);
+
+		M = M * B * G;
+	}
+
+	// Shear the cube about its local y-axis
+	if (middlePressed) {
+		mat4 A(
+			vec4(1.0f, factor, factor, 0.0f),
+			vec4(0.0f, 1.0f, 0.0f, 0.0f),
+			vec4(0.0f, 0.0f, 1.0f, 0.0f),
+			vec4(0.0f, 0.0f, 0.0f, 1.0f)
+		);
+
+		mat4 G(
+			vec4(1.0f, 0.0f, 0.0f, 0.0f),
+			vec4(0.0f, 1.0f, 0.0f, 0.0f),
+			vec4(factor, factor, 1.0f, 0.0f),
+			vec4(0.0f, 0.0f, 0.0f, 1.0f)
+		);
+
+		M = M * A * G;
+	}
+
+	// Shear the cube about its local z-axis
+	if (rightPressed) {
+		mat4 A(
+			vec4(1.0f, factor, factor, 0.0f),
+			vec4(0.0f, 1.0f, 0.0f, 0.0f),
+			vec4(0.0f, 0.0f, 1.0f, 0.0f),
+			vec4(0.0f, 0.0f, 0.0f, 1.0f)
+		);
+	
+		mat4 B(
+			vec4(1.0f, 0.0f, 0.0f, 0.0f),
+			vec4(factor, 1.0f, factor, 0.0f),
+			vec4(0.0f, 0.0f, 1.0f, 0.0f),
+			vec4(0.0f, 0.0f, 0.0f, 1.0f)
+		);
+
+		M = M * A * B;
+	}
+}
+
+//----------------------------------------------------------------------------------------
 /*
  * Called once per frame, before guiLogic().
  */
@@ -966,10 +1033,12 @@ void A2::appLogic()
 		S[i][i] = glm::clamp(S[i][i], MIN_SCALE, MAX_SCALE);
 	}
 
-	// Draw view gnomon
-	drawGnomon(false);
+	// Draw world gnomon
+	// (x, y, z) -> Cyan, Magenta, and Yellow
+	drawGnomon(false); 
 
-	// Draw model gnomon
+	// Draw model (cube) gnomon
+	// (x, y, z) -> Red, Green, Blue
 	drawGnomon();
 
 	// Draw cube
@@ -1015,7 +1084,7 @@ void A2::guiLogic()
 			ImGui::PopID();
 		}
 
-		ImGui::Text( "FOV: %.1f", fov); 
+		ImGui::Text( "FOV: %.1fº", fov); 
 		ImGui::Text( "Near: %.1f", near); ImGui::SameLine();
 		ImGui::Text( "Far: %.1f", far); 
 
@@ -1130,6 +1199,10 @@ bool A2::mouseMoveEvent (
 				break;
 			case Viewport:
 				viewport(xPos, yPos);
+				eventHandled = true;
+				break;
+			case ShearModel: // BONUS
+				shearModel(xPos, yPos);
 				eventHandled = true;
 				break;
 			default:
@@ -1275,10 +1348,13 @@ bool A2::keyInputEvent (
 			mode = Viewport;
 			eventHandled = true;
 			break;
+		case GLFW_KEY_H: // Bonus
+			mode = ShearModel;
+			eventHandled = true;
+			break;
 		default:
 			break;
 	}
 
 	return eventHandled;
 }
-	float aspect;

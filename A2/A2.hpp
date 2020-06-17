@@ -136,6 +136,7 @@ protected:
 		TranslateModel,
 		ScaleModel,
 		Viewport,
+		ShearModel, // BONUS
 		EndMode
 	};
 	Mode mode;
@@ -148,6 +149,7 @@ protected:
 	void translateModel(double xPos, double yPos);
 	void scaleModel(double xPos, double yPos);
 	void viewport(double xPos, double yPos);
+	void shearModel(double xPos, double yPos); // BONUS
 
 	// Mouse related fields
 	float xPrev, yPrev;
