@@ -1239,6 +1239,14 @@ bool A2::keyInputEvent (
 
 	// Fill in with event handling code...
 	switch(key){
+		case GLFW_KEY_A:
+			reset();
+			eventHandled = true;
+			break;
+		case GLFW_KEY_Q:
+			glfwSetWindowShouldClose(m_window, GL_TRUE);
+			eventHandled = true;
+			break;
 		case GLFW_KEY_O:
 			mode = RotateView;
 			eventHandled = true;
