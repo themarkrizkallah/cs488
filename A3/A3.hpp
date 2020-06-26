@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #pragma once
 
@@ -11,6 +11,7 @@
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <list>
 
 struct LightSource {
 	glm::vec3 position;
@@ -79,4 +80,24 @@ protected:
 	std::string m_luaSceneFile;
 
 	std::shared_ptr<SceneNode> m_rootNode;
+
+	// Recursively render the scene graph
+	void renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix);
+
+	// Transformations to entire scene graph
+	glm::mat4 m_T;
+	glm::mat4 m_R;
+
+	// Mouse related fields
+	float m_xPrev, m_yPrev;
+	bool m_leftPressed, m_middlePressed, m_rightPressed;
+
+	// Trackball controls and fields
+	glm::vec3 m_trackball;
+
+	glm::vec3 getTrackballPos(float xPos, float yPos);
+
+	void trackballPan(float xPos, float yPos);
+	void trackballZoom(float xPos, float yPos);
+	void trackballRotate(const glm::vec3 &v);
 };

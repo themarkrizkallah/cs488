@@ -15,11 +15,17 @@ using namespace std;
 #include <glm/gtx/io.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <math.h>
+
 using namespace glm;
 
 static bool show_gui = true;
 
 const size_t CIRCLE_PTS = 48;
+const float AMBIENT_INTENSITY = 0.25f;
+
+// Constants affecting transformations
+static const float TRANSLATE_FACTOR = 0.01;
 
 //----------------------------------------------------------------------------------------
 // Constructor
@@ -85,7 +91,8 @@ void A3::init()
 
 	initLightSources();
 
-
+	m_T = mat4();
+	m_R = mat4();
 	// Exiting the current scope calls delete automatically on meshConsolidator freeing
 	// all vertex data resources.  This is fine since we already copied this data to
 	// VBOs on the GPU.  We have no use for storing vertex data on the CPU side beyond
@@ -191,7 +198,7 @@ void A3::uploadVertexDataToVbos (
 		glGenBuffers( 1, &m_vbo_arcCircle );
 		glBindBuffer( GL_ARRAY_BUFFER, m_vbo_arcCircle );
 
-		float *pts = new float[ 2 * CIRCLE_PTS ];
+		float pts[2 * CIRCLE_PTS];
 		for( size_t idx = 0; idx < CIRCLE_PTS; ++idx ) {
 			float ang = 2.0 * M_PI * float(idx) / CIRCLE_PTS;
 			pts[2*idx] = cos( ang );
@@ -199,7 +206,6 @@ void A3::uploadVertexDataToVbos (
 		}
 
 		glBufferData(GL_ARRAY_BUFFER, 2*CIRCLE_PTS*sizeof(float), pts, GL_STATIC_DRAW);
-
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		CHECK_GL_ERRORS;
 	}
@@ -260,7 +266,7 @@ void A3::initViewMatrix() {
 void A3::initLightSources() {
 	// World-space position
 	m_light.position = vec3(10.0f, 10.0f, 10.0f);
-	m_light.rgbIntensity = vec3(0.0f); // light
+	m_light.rgbIntensity = vec3(0.6f); // light
 }
 
 //----------------------------------------------------------------------------------------
@@ -285,7 +291,7 @@ void A3::uploadCommonSceneUniforms() {
 		//-- Set background light ambient intensity
 		{
 			location = m_shader.getUniformLocation("ambientIntensity");
-			vec3 ambientIntensity(0.25f);
+			vec3 ambientIntensity(AMBIENT_INTENSITY);
 			glUniform3fv(location, 1, value_ptr(ambientIntensity));
 			CHECK_GL_ERRORS;
 		}
@@ -346,14 +352,15 @@ void A3::guiLogic()
 static void updateShaderUniforms(
 		const ShaderProgram & shader,
 		const GeometryNode & node,
-		const glm::mat4 & viewMatrix
+		const glm::mat4 & viewMatrix,
+		const glm::mat4 & modelMatrix
 ) {
 
 	shader.enable();
 	{
 		//-- Set ModelView matrix:
 		GLint location = shader.getUniformLocation("ModelView");
-		mat4 modelView = viewMatrix * node.trans;
+		mat4 modelView = viewMatrix * modelMatrix;
 		glUniformMatrix4fv(location, 1, GL_FALSE, value_ptr(modelView));
 		CHECK_GL_ERRORS;
 
@@ -407,27 +414,38 @@ void A3::renderSceneGraph(const SceneNode & root) {
 	// could put a set of mutually recursive functions in this class, which
 	// walk down the tree from nodes of different types.
 
-	for (const SceneNode * node : root.children) {
-
-		if (node->m_nodeType != NodeType::GeometryNode)
-			continue;
-
-		const GeometryNode * geometryNode = static_cast<const GeometryNode *>(node);
-
-		updateShaderUniforms(m_shader, *geometryNode, m_view);
-
-
-		// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
-		BatchInfo batchInfo = m_batchInfoMap[geometryNode->meshId];
-
-		//-- Now render the mesh:
-		m_shader.enable();
-		glDrawArrays(GL_TRIANGLES, batchInfo.startIndex, batchInfo.numIndices);
-		m_shader.disable();
-	}
+	const mat4 rootMatrix = root.get_transform();
+	renderSceneNode(root, m_T * rootMatrix * m_R * glm::inverse(rootMatrix));
 
 	glBindVertexArray(0);
 	CHECK_GL_ERRORS;
+}
+
+
+//----------------------------------------------------------------------------------------
+// Recursively traverse and render the scene graph
+void A3::renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix)
+{
+	const mat4 modelMatrix = accumMatrix * node.get_transform();
+
+	// Render node if it is a GeometryNode
+	if(node.m_nodeType == NodeType::GeometryNode){
+		const GeometryNode &geometryNode = static_cast<const GeometryNode &>(node);
+
+		updateShaderUniforms(m_shader, geometryNode, m_view, modelMatrix);
+
+		// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
+		BatchInfo batchInfo = m_batchInfoMap[geometryNode.meshId];
+
+		//-- Now render the mesh:
+		m_shader.enable();
+			glDrawArrays(GL_TRIANGLES, batchInfo.startIndex, batchInfo.numIndices);
+		m_shader.disable();
+	}
+
+	// Recursively run on subtree
+	for (const SceneNode *child : node.children)
+		renderSceneNode(*child, modelMatrix);
 }
 
 //----------------------------------------------------------------------------------------
@@ -450,6 +468,75 @@ void A3::renderArcCircle() {
 
 	glBindVertexArray(0);
 	CHECK_GL_ERRORS;
+}
+
+//----------------------------------------------------------------------------------------
+// Record trackball position
+vec3 A3::getTrackballPos(float xPos, float yPos) {
+	// Trackball center coordinates and diameter
+	const float iCenterX = m_framebufferWidth * 0.5f;
+	const float iCenterY = m_framebufferHeight * 0.5f;
+	const float radius = std::min(m_framebufferWidth, m_framebufferHeight) / 4.0f;
+
+	// New coordinates in trackball space
+	xPos -= iCenterX;
+	yPos -= iCenterY;
+
+   /* Vector pointing from center of virtual trackball to
+    * new mouse position
+    */
+	float newVecX = xPos / radius;
+	float newVecY = yPos / radius;
+    float newVecZ = (1.0 - newVecX * newVecX - newVecY * newVecY);
+
+   /* If the Z component is less than 0, the mouse point
+    * falls outside of the trackball which is interpreted
+    * as rotation about the Z axis.
+    */
+	if (newVecZ < 0.0) {
+		float len = sqrt(1.0 - newVecZ);
+		newVecZ  = 0.0;
+		newVecX /= len;
+		newVecY /= len;
+	} else {
+		newVecZ = sqrt(newVecZ);
+	}
+
+	return vec3(newVecX, -newVecY, newVecZ);
+}
+
+
+//----------------------------------------------------------------------------------------
+// Pan trackball
+void A3::trackballPan(float xPos, float yPos) 
+{
+	const float xDelta = xPos - m_xPrev;
+	const float yDelta = yPos - m_yPrev;
+
+	m_T = glm::translate(m_T, vec3(xDelta * TRANSLATE_FACTOR, -yDelta * TRANSLATE_FACTOR, 0.0f));
+}
+
+//----------------------------------------------------------------------------------------
+// Zoom trackball
+void A3::trackballZoom(float xPos, float yPos) 
+{
+	const float yDelta = yPos - m_yPrev;
+
+	m_T = glm::translate(m_T, vec3(0.0f, 0.0f, yDelta * TRANSLATE_FACTOR));
+}
+
+
+//----------------------------------------------------------------------------------------
+// Rotate trackball
+void A3::trackballRotate(const vec3 &v) {
+	const vec3 n = glm::cross(v, m_trackball); // Axis of rotation
+	const float projection = glm::dot(v, m_trackball);
+	const float theta = glm::acos(projection);
+
+	if(abs(theta) <= 1 && n != vec3(0.0f)){
+		mat4 R = glm::rotate(mat4(), -theta, n);
+		m_R = R * m_R;
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -483,11 +570,23 @@ bool A3::mouseMoveEvent (
 		double xPos,
 		double yPos
 ) {
-	bool eventHandled(false);
-
 	// Fill in with event handling code...
+	vec3 trackball = getTrackballPos(xPos, yPos);
 
-	return eventHandled;
+	if(m_leftPressed)
+		trackballPan(xPos, yPos);
+
+	if(m_middlePressed)
+		trackballZoom(xPos, yPos);
+
+	if(m_rightPressed)
+		trackballRotate(trackball);
+		
+	m_xPrev = xPos;
+	m_yPrev = yPos;
+	m_trackball = trackball;
+
+	return true;
 }
 
 //----------------------------------------------------------------------------------------
@@ -502,6 +601,39 @@ bool A3::mouseButtonInputEvent (
 	bool eventHandled(false);
 
 	// Fill in with event handling code...
+	if(actions == GLFW_PRESS){
+		switch(button){
+			case GLFW_MOUSE_BUTTON_LEFT:
+				m_leftPressed = true;
+				eventHandled = true;
+				break;
+			case GLFW_MOUSE_BUTTON_MIDDLE:
+				m_middlePressed = true;
+				eventHandled = true;
+				break;
+			case GLFW_MOUSE_BUTTON_RIGHT:
+				m_rightPressed = true;
+				eventHandled = true;
+				break;
+		}
+	}
+
+	if(actions == GLFW_RELEASE){
+		switch(button){
+			case GLFW_MOUSE_BUTTON_LEFT:
+				m_leftPressed = false;
+				eventHandled = true;
+				break;
+			case GLFW_MOUSE_BUTTON_MIDDLE:
+				m_middlePressed = false;
+				eventHandled = true;
+				break;
+			case GLFW_MOUSE_BUTTON_RIGHT:
+				m_rightPressed = false;
+				eventHandled = true;
+				break;
+		}
+	}
 
 	return eventHandled;
 }
