@@ -85,8 +85,11 @@ protected:
 	void renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix);
 
 	// Transformations to entire scene graph
-	glm::mat4 m_T;
-	glm::mat4 m_R;
+	glm::mat4 m_T; // Position/Translation matrix
+	glm::mat4 m_R; // Orientatiom, matrix
+
+	void undo();
+	void redo();
 
 	// Mouse related fields
 	float m_xPrev, m_yPrev;
@@ -96,8 +99,27 @@ protected:
 	glm::vec3 m_trackball;
 
 	glm::vec3 getTrackballPos(float xPos, float yPos);
-
 	void trackballPan(float xPos, float yPos);
 	void trackballZoom(float xPos, float yPos);
 	void trackballRotate(const glm::vec3 &v);
+
+	// UI Modes and Options
+	enum Mode {
+		Position,
+		Joints,
+		EndMode
+	};
+	Mode m_mode;
+
+	bool m_drawTrackball;
+	bool m_enableZbuffer, m_enableBackfaceCull, m_enableFrontfaceCull;
+
+	// Reset methods for puppet
+	void resetPosition();
+	void resetOrientation();
+	void resetJoints();
+	void resetAll();
+
+	// Resets EVERYTHING
+	void resetDefaults();
 };

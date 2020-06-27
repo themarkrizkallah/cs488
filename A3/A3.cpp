@@ -27,6 +27,11 @@ const float AMBIENT_INTENSITY = 0.25f;
 // Constants affecting transformations
 static const float TRANSLATE_FACTOR = 0.01;
 
+static const string MODES[] = {
+	"Position/Orientation (P)",
+	"Joints (J)"
+};
+
 //----------------------------------------------------------------------------------------
 // Constructor
 A3::A3(const std::string & luaSceneFile)
@@ -91,8 +96,7 @@ void A3::init()
 
 	initLightSources();
 
-	m_T = mat4();
-	m_R = mat4();
+	resetDefaults();
 	// Exiting the current scope calls delete automatically on meshConsolidator freeing
 	// all vertex data resources.  This is fine since we already copied this data to
 	// VBOs on the GPU.  We have no use for storing vertex data on the CPU side beyond
@@ -336,11 +340,65 @@ void A3::guiLogic()
 
 		// Add more gui elements here here ...
 
+		// Main Menu Bar
+		if (ImGui::BeginMainMenuBar()) {
+			if (ImGui::BeginMenu("Application")) {
+				if (ImGui::MenuItem("Reset Position", "I"))
+					resetPosition();
 
-		// Create Button, and check if it was clicked:
-		if( ImGui::Button( "Quit Application" ) ) {
-			glfwSetWindowShouldClose(m_window, GL_TRUE);
+				if (ImGui::MenuItem("Reset Orientation", "O"))
+					resetOrientation();
+
+				if (ImGui::MenuItem("Reset Joints", "S"))
+					resetJoints();
+
+				if (ImGui::MenuItem("Reset All", "A"))
+					resetAll();
+				
+				ImGui::Separator();
+
+				if (ImGui::MenuItem("Quit", "Q"))
+					glfwSetWindowShouldClose(m_window, GL_TRUE);
+
+				ImGui::EndMenu();
+			}
+
+			if (ImGui::BeginMenu("Edit")){
+				if (ImGui::MenuItem("Undo", "U"))
+					undo();
+
+				if (ImGui::MenuItem("Redo", "R"))
+					redo();
+
+				ImGui::EndMenu();
+			}
+
+			if (ImGui::BeginMenu("Options")){
+				if (ImGui::Checkbox("Circle (C)", &m_drawTrackball)){}
+
+				ImGui::Separator();
+
+				if (ImGui::Checkbox("Z-buffer (Z)", &m_enableZbuffer)) {}
+				if (ImGui::Checkbox("Backface culling (B)", &m_enableBackfaceCull)) {}
+				if (ImGui::Checkbox("Frontface culling (F)", &m_enableFrontfaceCull)) {}
+				
+				ImGui::EndMenu();
+			}
+
+			ImGui::EndMainMenuBar();
 		}
+
+		// Radio Buttons
+		for (int mode = Mode::Position; mode != Mode::EndMode; ++mode){
+			ImGui::PushID(mode);
+
+			if(ImGui::RadioButton(MODES[mode].c_str(), (int*) &m_mode, mode)) {}
+
+			ImGui::PopID();
+		}
+
+		if(ImGui::Button( "Reset Defaults"))
+			resetDefaults();
 
 		ImGui::Text( "Framerate: %.1f FPS", ImGui::GetIO().Framerate );
 
@@ -386,13 +444,30 @@ static void updateShaderUniforms(
  * Called once per frame, after guiLogic().
  */
 void A3::draw() {
+	if(m_enableZbuffer)
+		glEnable( GL_DEPTH_TEST );
 
-	glEnable( GL_DEPTH_TEST );
+	if(m_enableBackfaceCull || m_enableFrontfaceCull)
+		glEnable( GL_CULL_FACE );
+
+	if(m_enableBackfaceCull && m_enableFrontfaceCull)
+		glCullFace(GL_FRONT_AND_BACK);
+	else if(m_enableBackfaceCull)
+		glCullFace(GL_BACK);
+	else if(m_enableFrontfaceCull)
+		glCullFace(GL_FRONT);
+
+
 	renderSceneGraph(*m_rootNode);
 
+	if(m_enableZbuffer)
+		glDisable( GL_DEPTH_TEST );
 
-	glDisable( GL_DEPTH_TEST );
-	renderArcCircle();
+	if(m_enableBackfaceCull || m_enableFrontfaceCull)
+		glDisable( GL_CULL_FACE );
+
+	if(m_mode == Mode::Position && m_drawTrackball)
+		renderArcCircle();
 }
 
 //----------------------------------------------------------------------------------------
@@ -540,6 +615,53 @@ void A3::trackballRotate(const vec3 &v) {
 }
 
 //----------------------------------------------------------------------------------------
+// Reset the origin of the puppet to its initial position
+void A3::resetPosition()
+{
+	m_T = mat4();
+}
+
+//----------------------------------------------------------------------------------------
+// Reset the puppet to its initial orientation
+void A3::resetOrientation()
+{
+	m_R = mat4();
+}
+
+//----------------------------------------------------------------------------------------
+// (TODO) Reset all joint angles, and clear the undo/redo stack.
+void A3::resetJoints(){}
+
+//----------------------------------------------------------------------------------------
+// (TODO) Reset the position, orientation, and joint angles of the puppet, and clear the undo/redo stack
+void A3::resetAll()
+{
+	resetPosition();
+	resetOrientation();
+	resetJoints();
+}
+
+//----------------------------------------------------------------------------------------
+// Reset everything to default settings
+void A3::resetDefaults()
+{
+	m_drawTrackball = true;
+	m_enableZbuffer = true;
+	m_enableBackfaceCull = false;
+	m_enableFrontfaceCull = false;
+
+	resetAll();
+}
+
+//----------------------------------------------------------------------------------------
+// (TODO) Undo last joint movement
+void A3::undo(){}
+
+//----------------------------------------------------------------------------------------
+// (TODO) Redo last joint movement
+void A3::redo(){}
+
+//----------------------------------------------------------------------------------------
 /*
  * Called once, after program is signaled to terminate.
  */
@@ -573,14 +695,17 @@ bool A3::mouseMoveEvent (
 	// Fill in with event handling code...
 	vec3 trackball = getTrackballPos(xPos, yPos);
 
-	if(m_leftPressed)
-		trackballPan(xPos, yPos);
-
-	if(m_middlePressed)
-		trackballZoom(xPos, yPos);
-
-	if(m_rightPressed)
-		trackballRotate(trackball);
+	switch(m_mode){
+		case Mode::Position:
+			if(m_leftPressed)   trackballPan(xPos, yPos);
+			if(m_middlePressed) trackballZoom(xPos, yPos);
+			if(m_rightPressed)  trackballRotate(trackball);
+			break;
+		case Mode::Joints:
+			break;
+		default:
+			break;
+	}
 		
 	m_xPrev = xPos;
 	m_yPrev = yPos;
@@ -677,11 +802,67 @@ bool A3::keyInputEvent (
 ) {
 	bool eventHandled(false);
 
-	if( action == GLFW_PRESS ) {
-		if( key == GLFW_KEY_M ) {
-			show_gui = !show_gui;
-			eventHandled = true;
-		}
+	switch(action){
+		case GLFW_PRESS:
+			switch(key){
+				case GLFW_KEY_M:
+					show_gui = !show_gui;
+					eventHandled = true;
+					break;
+				
+				// Application Menu Shortcuts
+				case GLFW_KEY_I:
+					resetPosition();
+					eventHandled = true;
+					break;
+				case GLFW_KEY_O:
+					resetOrientation();
+					eventHandled = true;
+					break;
+				case GLFW_KEY_S:
+					resetJoints();
+					eventHandled = true;
+					break;
+				case GLFW_KEY_A:
+					resetAll();
+					eventHandled = true;
+					break;
+
+				// Edit Menu Shortucts
+				case GLFW_KEY_U:
+					undo();
+					eventHandled = true;
+					break;
+				case GLFW_KEY_R:
+					redo();
+					eventHandled = true;
+					break;
+
+				// Option Menu Shortucts
+				case GLFW_KEY_C:
+					m_drawTrackball = !m_drawTrackball;
+					eventHandled = true;
+					break;
+				case GLFW_KEY_Z:
+					m_enableZbuffer = !m_enableZbuffer;
+					eventHandled = true;
+					break;
+				case GLFW_KEY_B:
+					m_enableBackfaceCull = !m_enableBackfaceCull;
+					eventHandled = true;
+					break;
+				case GLFW_KEY_F:
+					m_enableFrontfaceCull = !m_enableFrontfaceCull;
+					eventHandled = true;
+					break;
+
+				default:
+					break;
+			}
+			break;
+
+		default:
+			break;
 	}
 	// Fill in with event handling code...
 
