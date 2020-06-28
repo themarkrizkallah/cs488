@@ -16,6 +16,10 @@ public:
 		double min, init, max;
 	};
 
-
 	JointRange m_joint_x, m_joint_y;
+
+	float m_xAngle, m_yAngle;
+
+	float netAngle(char axis, float angle) const;
+	virtual void rotate(char axis, float angle) override;
 };

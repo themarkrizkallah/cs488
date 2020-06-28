@@ -8,10 +8,16 @@
 #include "cs488-framework/MeshConsolidator.hpp"
 
 #include "SceneNode.hpp"
+#include "JointNode.hpp"
+#include "GeometryNode.hpp"
+#include "JointState.hpp"
 
 #include <glm/glm.hpp>
+
 #include <memory>
+#include <forward_list>
 #include <list>
+#include <set>
 
 struct LightSource {
 	glm::vec3 position;
@@ -45,6 +51,7 @@ protected:
 	void enableVertexShaderInputSlots();
 	void uploadVertexDataToVbos(const MeshConsolidator & meshConsolidator);
 	void mapVboDataToVertexShaderInputLocations();
+	void updateShaderUniforms(const GeometryNode &node, const glm::mat4 & viewMatrix, const glm::mat4 & modelMatrix);
 	void initViewMatrix();
 	void initLightSources();
 
@@ -80,16 +87,38 @@ protected:
 	std::string m_luaSceneFile;
 
 	std::shared_ptr<SceneNode> m_rootNode;
+	std::vector<SceneNode *> m_nodeMap;
+	std::vector<SceneNode *> m_predMap;
+	unsigned int m_numNodes;
 
-	// Recursively render the scene graph
+	void mapScene();
 	void renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix);
 
-	// Transformations to entire scene graph
-	glm::mat4 m_T; // Position/Translation matrix
-	glm::mat4 m_R; // Orientatiom, matrix
+	// Picking and joint selection
+	bool m_currentlyPicking;
+	std::set<JointNode *> m_selectedJoints;
 
-	void undo();
-	void redo();
+	void unselectAllJoints();
+	void selectJoint(unsigned int id);
+	void pickJoint();
+
+	// State
+	std::shared_ptr<JointStates> m_state;
+	std::forward_list<std::shared_ptr<JointStates>> m_undoStack;
+	std::forward_list<std::shared_ptr<JointStates>> m_redoStack;
+
+	bool m_stateDirty;
+
+	void updateState();
+	void saveState();
+	bool undo();
+	bool redo();
+
+	void rotateSelected(float xPos, float yPos);
+
+	// Transformations to entire scene graph
+	glm::mat4 m_position; // Position/Translation matrix
+	glm::mat4 m_orientation; // Orientation, matrix
 
 	// Mouse related fields
 	float m_xPrev, m_yPrev;
@@ -114,12 +143,12 @@ protected:
 	bool m_drawTrackball;
 	bool m_enableZbuffer, m_enableBackfaceCull, m_enableFrontfaceCull;
 
-	// Reset methods for puppet
+	// Reset methods
 	void resetPosition();
 	void resetOrientation();
 	void resetJoints();
 	void resetAll();
 
-	// Resets EVERYTHING
+	// Resets everything to default
 	void resetDefaults();
 };

@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #include "A3.hpp"
 #include "scene_lua.hpp"
@@ -6,8 +6,10 @@ using namespace std;
 
 #include "cs488-framework/GlErrorCheck.hpp"
 #include "cs488-framework/MathUtils.hpp"
+// #include "command.hpp"
 #include "GeometryNode.hpp"
 #include "JointNode.hpp"
+#include "JointState.hpp"
 
 #include <imgui/imgui.h>
 
@@ -15,6 +17,8 @@ using namespace std;
 #include <glm/gtx/io.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <memory>
+#include <deque>
 #include <math.h>
 
 using namespace glm;
@@ -22,15 +26,41 @@ using namespace glm;
 static bool show_gui = true;
 
 const size_t CIRCLE_PTS = 48;
-const float AMBIENT_INTENSITY = 0.25f;
+const float AMBIENT_INTENSITY = 0.05f;
 
-// Constants affecting transformations
-static const float TRANSLATE_FACTOR = 0.01;
+// Constants pertaining to transformations
+static const float TRANSLATE_FACTOR = 0.01f;
+static const float ROTATION_FACTOR = 0.1f;
 
 static const string MODES[] = {
 	"Position/Orientation (P)",
 	"Joints (J)"
 };
+
+const vec3 SELECTED(1.0f, 1.0f, 0.0f);
+
+//----------------------------------------------------------------------------------------
+// Count nodes in scene graph rooted at root
+static unsigned int sceneSize(SceneNode *root)
+{
+	unsigned int count = 0;
+
+	deque<SceneNode *> queue;
+	queue.push_back(root);
+
+	while(!queue.empty()){
+		auto node = queue.front();
+		queue.pop_front();
+
+		for (auto child : node->children)
+			queue.push_back(child);
+
+		++count;
+	}
+
+	return count;
+}
+
 
 //----------------------------------------------------------------------------------------
 // Constructor
@@ -62,6 +92,7 @@ void A3::init()
 {
 	// Set the background colour.
 	glClearColor(0.85, 0.85, 0.85, 1.0);
+	// glClearColor(0.35, 0.35, 0.35, 1.0);
 
 	createShaderProgram();
 
@@ -95,6 +126,10 @@ void A3::init()
 	initViewMatrix();
 
 	initLightSources();
+
+	m_numNodes = sceneSize(m_rootNode.get());
+
+	mapScene();
 
 	resetDefaults();
 	// Exiting the current scope calls delete automatically on meshConsolidator freeing
@@ -270,7 +305,7 @@ void A3::initViewMatrix() {
 void A3::initLightSources() {
 	// World-space position
 	m_light.position = vec3(10.0f, 10.0f, 10.0f);
-	m_light.rgbIntensity = vec3(0.6f); // light
+	m_light.rgbIntensity = vec3(0.8f); // light
 }
 
 //----------------------------------------------------------------------------------------
@@ -282,24 +317,29 @@ void A3::uploadCommonSceneUniforms() {
 		glUniformMatrix4fv(location, 1, GL_FALSE, value_ptr(m_perpsective));
 		CHECK_GL_ERRORS;
 
+		location = m_shader.getUniformLocation("picking");
+		glUniform1i( location, m_currentlyPicking ? 1 : 0 );
 
 		//-- Set LightSource uniform for the scene:
-		{
-			location = m_shader.getUniformLocation("light.position");
-			glUniform3fv(location, 1, value_ptr(m_light.position));
-			location = m_shader.getUniformLocation("light.rgbIntensity");
-			glUniform3fv(location, 1, value_ptr(m_light.rgbIntensity));
-			CHECK_GL_ERRORS;
-		}
+		if (!m_currentlyPicking){
+			{
+				location = m_shader.getUniformLocation("light.position");
+				glUniform3fv(location, 1, value_ptr(m_light.position));
+				location = m_shader.getUniformLocation("light.rgbIntensity");
+				glUniform3fv(location, 1, value_ptr(m_light.rgbIntensity));
+				CHECK_GL_ERRORS;
+			}
 
-		//-- Set background light ambient intensity
-		{
-			location = m_shader.getUniformLocation("ambientIntensity");
-			vec3 ambientIntensity(AMBIENT_INTENSITY);
-			glUniform3fv(location, 1, value_ptr(ambientIntensity));
-			CHECK_GL_ERRORS;
+			//-- Set background light ambient intensity
+			{
+				location = m_shader.getUniformLocation("ambientIntensity");
+				vec3 ambientIntensity(AMBIENT_INTENSITY);
+				glUniform3fv(location, 1, value_ptr(ambientIntensity));
+				CHECK_GL_ERRORS;
+			}
 		}
 	}
+
 	m_shader.disable();
 }
 
@@ -364,10 +404,10 @@ void A3::guiLogic()
 			}
 
 			if (ImGui::BeginMenu("Edit")){
-				if (ImGui::MenuItem("Undo", "U"))
+				if (ImGui::MenuItem("Undo", "U", false, !m_undoStack.empty()))
 					undo();
 
-				if (ImGui::MenuItem("Redo", "R"))
+				if (ImGui::MenuItem("Redo", "R", false, !m_redoStack.empty()))
 					redo();
 
 				ImGui::EndMenu();
@@ -389,7 +429,7 @@ void A3::guiLogic()
 		}
 
 		// Radio Buttons
-		for (int mode = Mode::Position; mode != Mode::EndMode; ++mode){
+		for (int mode = Position; mode != EndMode; ++mode){
 			ImGui::PushID(mode);
 
 			if(ImGui::RadioButton(MODES[mode].c_str(), (int*) &m_mode, mode)) {}
@@ -397,7 +437,7 @@ void A3::guiLogic()
 			ImGui::PopID();
 		}
 
-		if(ImGui::Button( "Reset Defaults"))
+		if(ImGui::Button( "Reset Defaults (D)"))
 			resetDefaults();
 
 		ImGui::Text( "Framerate: %.1f FPS", ImGui::GetIO().Framerate );
@@ -407,36 +447,51 @@ void A3::guiLogic()
 
 //----------------------------------------------------------------------------------------
 // Update mesh specific shader uniforms:
-static void updateShaderUniforms(
-		const ShaderProgram & shader,
+void A3::updateShaderUniforms(
 		const GeometryNode & node,
 		const glm::mat4 & viewMatrix,
 		const glm::mat4 & modelMatrix
 ) {
 
-	shader.enable();
+	m_shader.enable();
 	{
 		//-- Set ModelView matrix:
-		GLint location = shader.getUniformLocation("ModelView");
+		GLint location = m_shader.getUniformLocation("ModelView");
 		mat4 modelView = viewMatrix * modelMatrix;
 		glUniformMatrix4fv(location, 1, GL_FALSE, value_ptr(modelView));
 		CHECK_GL_ERRORS;
 
-		//-- Set NormMatrix:
-		location = shader.getUniformLocation("NormalMatrix");
-		mat3 normalMatrix = glm::transpose(glm::inverse(mat3(modelView)));
-		glUniformMatrix3fv(location, 1, GL_FALSE, value_ptr(normalMatrix));
-		CHECK_GL_ERRORS;
+		if(m_currentlyPicking){
+			const unsigned int idx = node.m_nodeId;
 
+			float r = float(idx&0xff) / 255.0f;
+			float g = float((idx>>8)&0xff) / 255.0f;
+			float b = float((idx>>16)&0xff) / 255.0f;
 
-		//-- Set Material values:
-		location = shader.getUniformLocation("material.kd");
-		vec3 kd = node.material.kd;
-		glUniform3fv(location, 1, value_ptr(kd));
-		CHECK_GL_ERRORS;
+			location = m_shader.getUniformLocation("material.kd");
+			glUniform3f( location, r, g, b );
+			CHECK_GL_ERRORS;
+
+		} else {
+			//-- Set NormMatrix:
+			location = m_shader.getUniformLocation("NormalMatrix");
+			mat3 normalMatrix = glm::transpose(glm::inverse(mat3(modelView)));
+			glUniformMatrix3fv(location, 1, GL_FALSE, value_ptr(normalMatrix));
+			CHECK_GL_ERRORS;
+
+			//-- Set Material values:
+			location = m_shader.getUniformLocation("material.kd");
+			vec3 kd = node.isSelected ? SELECTED : node.material.kd;
+			glUniform3fv(location, 1, value_ptr(kd));
+
+			location = m_shader.getUniformLocation("material.ks");
+			vec3 ks = node.isSelected ? SELECTED : node.material.ks;
+			glUniform3fv(location, 1, value_ptr(ks));
+	
+			CHECK_GL_ERRORS;
+		}
 	}
-	shader.disable();
-
+	m_shader.disable();
 }
 
 //----------------------------------------------------------------------------------------
@@ -445,29 +500,208 @@ static void updateShaderUniforms(
  */
 void A3::draw() {
 	if(m_enableZbuffer)
-		glEnable( GL_DEPTH_TEST );
+		glEnable(GL_DEPTH_TEST);
 
 	if(m_enableBackfaceCull || m_enableFrontfaceCull)
-		glEnable( GL_CULL_FACE );
+		glEnable(GL_CULL_FACE);
 
 	if(m_enableBackfaceCull && m_enableFrontfaceCull)
 		glCullFace(GL_FRONT_AND_BACK);
-	else if(m_enableBackfaceCull)
+
+	else if(m_enableBackfaceCull) 
 		glCullFace(GL_BACK);
+
 	else if(m_enableFrontfaceCull)
 		glCullFace(GL_FRONT);
-
 
 	renderSceneGraph(*m_rootNode);
 
 	if(m_enableZbuffer)
-		glDisable( GL_DEPTH_TEST );
+		glDisable(GL_DEPTH_TEST);
 
 	if(m_enableBackfaceCull || m_enableFrontfaceCull)
-		glDisable( GL_CULL_FACE );
+		glDisable(GL_CULL_FACE);
 
-	if(m_mode == Mode::Position && m_drawTrackball)
+	if(m_mode == Position && m_drawTrackball)
 		renderArcCircle();
+}
+
+//----------------------------------------------------------------------------------------
+// Unselect all joints
+void A3::unselectAllJoints()
+{
+	m_selectedJoints.clear();
+
+	for(auto node : m_nodeMap)
+		node->isSelected = false;
+}
+
+//----------------------------------------------------------------------------------------
+// Select joint using id
+void A3::selectJoint(unsigned int id)
+{
+	if(id >= m_nodeMap.size())
+		return;
+	
+	SceneNode *clicked = m_nodeMap[id];
+	SceneNode *parent = m_predMap[id];
+
+	bool isParentJoint = parent && parent->m_nodeType == NodeType::JointNode;
+
+	if(!isParentJoint || (parent->isSelected && !clicked->isSelected))
+		return;
+
+	clicked->isSelected = !clicked->isSelected;
+	parent->isSelected = !parent->isSelected;
+
+	if(parent->isSelected)
+		m_selectedJoints.insert(static_cast<JointNode *>(parent));
+	else
+		m_selectedJoints.erase(static_cast<JointNode *>(parent));
+}
+
+//----------------------------------------------------------------------------------------
+// Pick joint based on mouse click
+void A3::pickJoint()
+{
+	double xPos, yPos;
+	glfwGetCursorPos(m_window, &xPos, &yPos);
+
+	m_currentlyPicking = true;
+
+	uploadCommonSceneUniforms();
+	glClearColor(1.0, 1.0, 1.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClearColor(0.85, 0.85, 0.85, 1.0);
+
+	draw();
+
+	CHECK_GL_ERRORS;
+
+	// Ugly -- FB coordinates might be different than Window coordinates
+	// (e.g., on a retina display).  Must compensate.
+	xPos *= double(m_framebufferWidth) / double(m_windowWidth);
+	// WTF, don't know why I have to measure y relative to the bottom of
+	// the window in this case.
+	yPos = m_windowHeight - yPos;
+	yPos *= double(m_framebufferHeight) / double(m_windowHeight);
+
+	GLubyte buffer[ 4 ] = { 0, 0, 0, 0 };
+	// A bit ugly -- don't want to swap the just-drawn false colours
+	// to the screen, so read from the back buffer.
+	glReadBuffer( GL_BACK );
+	// Actually read the pixel at the mouse location.
+	glReadPixels( int(xPos), int(yPos), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, buffer );
+	CHECK_GL_ERRORS;
+
+	// Reassemble the object ID.
+	unsigned int objectID = buffer[0] + (buffer[1] << 8) + (buffer[2] << 16);
+	selectJoint(objectID);
+
+	m_currentlyPicking = false;
+
+	CHECK_GL_ERRORS;
+}
+
+//----------------------------------------------------------------------------------------
+// Record selected joint's states in m_state
+void A3::updateState()
+{
+	m_state = std::make_shared<JointStates>(JointStates(m_selectedJoints));
+}
+
+//----------------------------------------------------------------------------------------
+// Save m_state on m_undoStack and clear m_redoStack
+void A3::saveState()
+{
+	m_undoStack.emplace_front(m_state);
+	m_redoStack.clear();
+	m_stateDirty = false;
+}
+
+//----------------------------------------------------------------------------------------
+// Rotate currently selected joints
+void A3::rotateSelected(float xPos, float yPos)
+{
+	const float angle = (yPos - m_yPrev) * ROTATION_FACTOR;
+	
+	// Rotate along x-axis
+	if(m_middlePressed){
+		m_stateDirty = true;
+		for(auto node : m_selectedJoints)
+			node->rotate('x', angle);
+	}
+	
+	// Rotate along y-axis
+	if(m_rightPressed){
+		m_stateDirty = true;
+		for(auto node : m_selectedJoints)
+			node->rotate('y', angle);
+	}
+}
+
+//----------------------------------------------------------------------------------------
+// Undo last joint movement
+bool A3::undo()
+{
+	if(m_undoStack.empty())
+		return false;
+
+	updateState();
+
+	auto state = m_undoStack.front();
+	state->recover();
+
+	m_redoStack.emplace_front(m_state);
+	m_undoStack.pop_front();
+
+	return true;
+}
+
+//----------------------------------------------------------------------------------------
+// Redo last joint movement
+bool A3::redo()
+{
+	if(m_redoStack.empty())
+		return false;
+
+	updateState();
+
+	auto state = m_redoStack.front();
+	state->recover();
+
+	m_undoStack.emplace_front(m_state);
+	m_redoStack.pop_front();
+
+	return true;
+}
+
+//----------------------------------------------------------------------------------------
+// Map node ID to SceneNode object and node ID to its direct predecessor
+void A3::mapScene()
+{
+	if(!m_rootNode)
+		return;
+
+	m_nodeMap.resize(m_numNodes);
+	m_predMap.resize(m_numNodes);
+
+	deque<SceneNode *> queue;
+	queue.push_back(m_rootNode.get());
+
+	m_predMap[m_rootNode->m_nodeId] = nullptr;
+
+	while(!queue.empty()){
+		auto node = queue.front();
+		queue.pop_front();
+
+		m_nodeMap[node->m_nodeId] = node;
+
+		for (auto child : node->children){
+			m_predMap[child->m_nodeId] = node;
+			queue.push_back(child);
+		}
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -490,7 +724,7 @@ void A3::renderSceneGraph(const SceneNode & root) {
 	// walk down the tree from nodes of different types.
 
 	const mat4 rootMatrix = root.get_transform();
-	renderSceneNode(root, m_T * rootMatrix * m_R * glm::inverse(rootMatrix));
+	renderSceneNode(root, m_position * rootMatrix * m_orientation * glm::inverse(rootMatrix));
 
 	glBindVertexArray(0);
 	CHECK_GL_ERRORS;
@@ -507,7 +741,7 @@ void A3::renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix)
 	if(node.m_nodeType == NodeType::GeometryNode){
 		const GeometryNode &geometryNode = static_cast<const GeometryNode &>(node);
 
-		updateShaderUniforms(m_shader, geometryNode, m_view, modelMatrix);
+		updateShaderUniforms(geometryNode, m_view, modelMatrix);
 
 		// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
 		BatchInfo batchInfo = m_batchInfoMap[geometryNode.meshId];
@@ -588,7 +822,7 @@ void A3::trackballPan(float xPos, float yPos)
 	const float xDelta = xPos - m_xPrev;
 	const float yDelta = yPos - m_yPrev;
 
-	m_T = glm::translate(m_T, vec3(xDelta * TRANSLATE_FACTOR, -yDelta * TRANSLATE_FACTOR, 0.0f));
+	m_position = glm::translate(m_position, vec3(xDelta * TRANSLATE_FACTOR, -yDelta * TRANSLATE_FACTOR, 0.0f));
 }
 
 //----------------------------------------------------------------------------------------
@@ -597,7 +831,7 @@ void A3::trackballZoom(float xPos, float yPos)
 {
 	const float yDelta = yPos - m_yPrev;
 
-	m_T = glm::translate(m_T, vec3(0.0f, 0.0f, yDelta * TRANSLATE_FACTOR));
+	m_position = glm::translate(m_position, vec3(0.0f, 0.0f, yDelta * TRANSLATE_FACTOR));
 }
 
 
@@ -610,7 +844,7 @@ void A3::trackballRotate(const vec3 &v) {
 
 	if(abs(theta) <= 1 && n != vec3(0.0f)){
 		mat4 R = glm::rotate(mat4(), -theta, n);
-		m_R = R * m_R;
+		m_orientation = R * m_orientation;
 	}
 }
 
@@ -618,22 +852,31 @@ void A3::trackballRotate(const vec3 &v) {
 // Reset the origin of the puppet to its initial position
 void A3::resetPosition()
 {
-	m_T = mat4();
+	m_position = mat4();
 }
 
 //----------------------------------------------------------------------------------------
 // Reset the puppet to its initial orientation
 void A3::resetOrientation()
 {
-	m_R = mat4();
+	m_orientation = mat4();
 }
 
 //----------------------------------------------------------------------------------------
-// (TODO) Reset all joint angles, and clear the undo/redo stack.
-void A3::resetJoints(){}
+// Reset all joint angles, and clear the undo/redo stack.
+void A3::resetJoints()
+{
+	bool notDone = true;
+
+	while(notDone)
+		notDone = undo();
+	
+	m_stateDirty = false;
+	m_redoStack.clear();
+}
 
 //----------------------------------------------------------------------------------------
-// (TODO) Reset the position, orientation, and joint angles of the puppet, and clear the undo/redo stack
+//  Reset the position, orientation, and joint angles of the puppet, and clear the undo/redo stack
 void A3::resetAll()
 {
 	resetPosition();
@@ -645,30 +888,23 @@ void A3::resetAll()
 // Reset everything to default settings
 void A3::resetDefaults()
 {
+	m_currentlyPicking = false;
 	m_drawTrackball = true;
 	m_enableZbuffer = true;
 	m_enableBackfaceCull = false;
 	m_enableFrontfaceCull = false;
+	m_mode = Position;
 
+	unselectAllJoints();
 	resetAll();
 }
-
-//----------------------------------------------------------------------------------------
-// (TODO) Undo last joint movement
-void A3::undo(){}
-
-//----------------------------------------------------------------------------------------
-// (TODO) Redo last joint movement
-void A3::redo(){}
 
 //----------------------------------------------------------------------------------------
 /*
  * Called once, after program is signaled to terminate.
  */
 void A3::cleanup()
-{
-
-}
+{}
 
 //----------------------------------------------------------------------------------------
 /*
@@ -696,12 +932,19 @@ bool A3::mouseMoveEvent (
 	vec3 trackball = getTrackballPos(xPos, yPos);
 
 	switch(m_mode){
-		case Mode::Position:
-			if(m_leftPressed)   trackballPan(xPos, yPos);
-			if(m_middlePressed) trackballZoom(xPos, yPos);
-			if(m_rightPressed)  trackballRotate(trackball);
+		case Position:
+			if(m_leftPressed)
+				trackballPan(xPos, yPos);
+
+			if(m_middlePressed)
+				trackballZoom(xPos, yPos);
+
+			if(m_rightPressed)
+				trackballRotate(trackball);
 			break;
-		case Mode::Joints:
+		case Joints:
+			if(!m_leftPressed)
+				rotateSelected(xPos, yPos);
 			break;
 		default:
 			break;
@@ -723,39 +966,65 @@ bool A3::mouseButtonInputEvent (
 		int actions,
 		int mods
 ) {
-	bool eventHandled(false);
+	bool eventHandled(true);
 
 	// Fill in with event handling code...
 	if(actions == GLFW_PRESS){
 		switch(button){
 			case GLFW_MOUSE_BUTTON_LEFT:
+				if(m_mode == Joints) pickJoint();
 				m_leftPressed = true;
-				eventHandled = true;
 				break;
+
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = true;
-				eventHandled = true;
+				if(m_mode == Joints){
+					if(m_stateDirty) saveState();
+					updateState();
+				}
 				break;
+
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = true;
-				eventHandled = true;
+				if(m_mode == Joints){
+					if(m_stateDirty) saveState();
+					updateState();
+				}
+				break;
+
+			default:
+				eventHandled = false;
 				break;
 		}
 	}
 
 	if(actions == GLFW_RELEASE){
+		eventHandled = true;
+
 		switch(button){
 			case GLFW_MOUSE_BUTTON_LEFT:
 				m_leftPressed = false;
-				eventHandled = true;
 				break;
+
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = false;
-				eventHandled = true;
+				if(m_mode == Joints){
+					if(m_stateDirty) saveState();
+					updateState();
+				}
 				break;
+
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = false;
-				eventHandled = true;
+
+				if(m_mode == Joints){
+					if(m_stateDirty) saveState();
+					updateState();
+				}
+				break;
+
+			default:
+				eventHandled = false;
 				break;
 		}
 	}
@@ -800,42 +1069,47 @@ bool A3::keyInputEvent (
 		int action,
 		int mods
 ) {
-	bool eventHandled(false);
+	bool eventHandled = true;
 
 	switch(action){
 		case GLFW_PRESS:
 			switch(key){
 				case GLFW_KEY_M:
 					show_gui = !show_gui;
-					eventHandled = true;
+					break;
+				case GLFW_KEY_P:
+					m_mode = Position;
+					break;
+				case GLFW_KEY_J:
+					m_mode = Joints;
 					break;
 				
 				// Application Menu Shortcuts
 				case GLFW_KEY_I:
 					resetPosition();
-					eventHandled = true;
 					break;
 				case GLFW_KEY_O:
 					resetOrientation();
-					eventHandled = true;
 					break;
 				case GLFW_KEY_S:
 					resetJoints();
-					eventHandled = true;
 					break;
 				case GLFW_KEY_A:
 					resetAll();
-					eventHandled = true;
+					break;
+				case GLFW_KEY_D:
+					resetDefaults();
+					break;
+				case GLFW_KEY_Q:
+					glfwSetWindowShouldClose(m_window, GL_TRUE);
 					break;
 
 				// Edit Menu Shortucts
 				case GLFW_KEY_U:
 					undo();
-					eventHandled = true;
 					break;
 				case GLFW_KEY_R:
 					redo();
-					eventHandled = true;
 					break;
 
 				// Option Menu Shortucts
@@ -845,23 +1119,22 @@ bool A3::keyInputEvent (
 					break;
 				case GLFW_KEY_Z:
 					m_enableZbuffer = !m_enableZbuffer;
-					eventHandled = true;
 					break;
 				case GLFW_KEY_B:
 					m_enableBackfaceCull = !m_enableBackfaceCull;
-					eventHandled = true;
 					break;
 				case GLFW_KEY_F:
 					m_enableFrontfaceCull = !m_enableFrontfaceCull;
-					eventHandled = true;
 					break;
 
 				default:
+					eventHandled = false;
 					break;
 			}
 			break;
 
 		default:
+			eventHandled = false;
 			break;
 	}
 	// Fill in with event handling code...
