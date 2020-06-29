@@ -623,20 +623,21 @@ void A3::saveState()
 // Rotate currently selected joints
 void A3::rotateSelected(float xPos, float yPos)
 {
-	const float angle = (yPos - m_yPrev) * ROTATION_FACTOR;
+	const float xAngle = (yPos - m_yPrev) * ROTATION_FACTOR;
+	const float yAngle = (xPos - m_xPrev) * ROTATION_FACTOR;
 	
 	// Rotate along x-axis
 	if(m_middlePressed){
 		m_stateDirty = true;
 		for(auto node : m_selectedJoints)
-			node->rotate('x', angle);
+			node->rotate('x', xAngle);
 	}
 	
 	// Rotate along y-axis
 	if(m_rightPressed){
 		m_stateDirty = true;
 		for(auto node : m_selectedJoints)
-			node->rotate('y', angle);
+			node->rotate('y', yAngle);
 	}
 }
 
@@ -648,11 +649,11 @@ bool A3::undo()
 		return false;
 
 	updateState();
+	m_redoStack.emplace_front(m_state);
 
 	auto state = m_undoStack.front();
 	state->recover();
 
-	m_redoStack.emplace_front(m_state);
 	m_undoStack.pop_front();
 
 	return true;
@@ -666,11 +667,11 @@ bool A3::redo()
 		return false;
 
 	updateState();
+	m_undoStack.emplace_front(m_state);
 
 	auto state = m_redoStack.front();
 	state->recover();
 
-	m_undoStack.emplace_front(m_state);
 	m_redoStack.pop_front();
 
 	return true;
@@ -972,14 +973,16 @@ bool A3::mouseButtonInputEvent (
 	if(actions == GLFW_PRESS){
 		switch(button){
 			case GLFW_MOUSE_BUTTON_LEFT:
-				if(m_mode == Joints) pickJoint();
+				if(m_mode == Joints)
+					pickJoint();
 				m_leftPressed = true;
 				break;
 
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = true;
 				if(m_mode == Joints){
-					if(m_stateDirty) saveState();
+					if(m_stateDirty)
+						saveState();
 					updateState();
 				}
 				break;
@@ -987,7 +990,8 @@ bool A3::mouseButtonInputEvent (
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = true;
 				if(m_mode == Joints){
-					if(m_stateDirty) saveState();
+					if(m_stateDirty)
+						saveState();
 					updateState();
 				}
 				break;
@@ -1009,7 +1013,8 @@ bool A3::mouseButtonInputEvent (
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = false;
 				if(m_mode == Joints){
-					if(m_stateDirty) saveState();
+					if(m_stateDirty)
+						saveState();
 					updateState();
 				}
 				break;
@@ -1018,7 +1023,8 @@ bool A3::mouseButtonInputEvent (
 				m_rightPressed = false;
 
 				if(m_mode == Joints){
-					if(m_stateDirty) saveState();
+					if(m_stateDirty)
+						saveState();
 					updateState();
 				}
 				break;

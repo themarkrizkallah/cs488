@@ -39,9 +39,7 @@ JointStates::JointStates(std::set<JointNode *> nodes)
 // Move Constructor
 JointStates::JointStates(JointStates &&other)
     : m_states(std::move(other.m_states))
-{
-    // cout << "Move constructor running" << endl;
-}
+{}
 
 //----------------------------------------------------------------------------------------
 // Set m_node's state according to JointState
