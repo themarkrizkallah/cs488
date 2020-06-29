@@ -6,16 +6,17 @@ using namespace std;
 
 #include "cs488-framework/GlErrorCheck.hpp"
 #include "cs488-framework/MathUtils.hpp"
-// #include "command.hpp"
+
+#include "RotateCommand.hpp"
 #include "GeometryNode.hpp"
 #include "JointNode.hpp"
-#include "JointState.hpp"
 
 #include <imgui/imgui.h>
 
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/io.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include <memory>
 #include <deque>
@@ -37,7 +38,8 @@ static const string MODES[] = {
 	"Joints (J)"
 };
 
-const vec3 SELECTED(1.0f, 1.0f, 0.0f);
+const vec3 SELECTED_COLOUR(0, 94.0f/255.0f, 73.0f/255.0f);
+// const vec3 SELECTED_COLOUR(1.0f, 1.0f, 0.0f);
 
 //----------------------------------------------------------------------------------------
 // Count nodes in scene graph rooted at root
@@ -352,6 +354,11 @@ void A3::appLogic()
 	// Place per frame, application logic here ...
 
 	uploadCommonSceneUniforms();
+
+	// Execute Commands
+	if(m_mode == Joints){
+		executeCommands();
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -481,11 +488,11 @@ void A3::updateShaderUniforms(
 
 			//-- Set Material values:
 			location = m_shader.getUniformLocation("material.kd");
-			vec3 kd = node.isSelected ? SELECTED : node.material.kd;
+			vec3 kd = node.isSelected ? SELECTED_COLOUR : node.material.kd;
 			glUniform3fv(location, 1, value_ptr(kd));
 
 			location = m_shader.getUniformLocation("material.ks");
-			vec3 ks = node.isSelected ? SELECTED : node.material.ks;
+			vec3 ks = node.isSelected ? SELECTED_COLOUR : node.material.ks;
 			glUniform3fv(location, 1, value_ptr(ks));
 	
 			CHECK_GL_ERRORS;
@@ -604,57 +611,78 @@ void A3::pickJoint()
 }
 
 //----------------------------------------------------------------------------------------
-// Record selected joint's states in m_state
-void A3::updateState()
-{
-	m_state = std::make_shared<JointStates>(JointStates(m_selectedJoints));
-}
-
-//----------------------------------------------------------------------------------------
-// Save m_state on m_undoStack and clear m_redoStack
+// Save m_commands on m_undoStack and clear m_redoStack
 void A3::saveState()
 {
-	m_undoStack.emplace_front(m_state);
-	m_redoStack.clear();
-	m_stateDirty = false;
+	m_undoStack.emplace(*m_commands);
+	m_redoStack = std::stack<Commands>();
+	clearCommands();
 }
 
 //----------------------------------------------------------------------------------------
 // Rotate currently selected joints
-void A3::rotateSelected(float xPos, float yPos)
+void A3::generateRotations(float xPos, float yPos)
 {
 	const float xAngle = (yPos - m_yPrev) * ROTATION_FACTOR;
 	const float yAngle = (xPos - m_xPrev) * ROTATION_FACTOR;
-	
+
+	// Reset m_commands
+	if((m_middlePressed || m_rightPressed) && m_selectedJoints.size() > 0)
+		m_dirty = true;
+
 	// Rotate along x-axis
 	if(m_middlePressed){
-		m_stateDirty = true;
 		for(auto node : m_selectedJoints)
-			node->rotate('x', xAngle);
+			m_commands->emplace_back(node, 'x', xAngle);
 	}
 	
 	// Rotate along y-axis
 	if(m_rightPressed){
-		m_stateDirty = true;
 		for(auto node : m_selectedJoints)
-			node->rotate('y', yAngle);
+			m_commands->emplace_back(node, 'y', yAngle);
 	}
 }
+
+void A3::executeCommands()
+{
+	if(m_commands){
+		for(auto &cmd : *m_commands)
+			cmd.execute();
+	}
+}
+
+void A3::undoCommands()
+{
+	if(m_commands){
+   		for (auto cmd =  m_commands->rbegin(); cmd != m_commands->rend(); ++cmd)
+			cmd->undo();
+	}
+}
+
+void A3::clearCommands()
+{
+	m_commands = std::make_shared<Commands>();
+	m_dirty = false;
+}
+
 
 //----------------------------------------------------------------------------------------
 // Undo last joint movement
 bool A3::undo()
 {
-	if(m_undoStack.empty())
+	if(m_undoStack.empty() || m_dirty)
 		return false;
 
-	updateState();
-	m_redoStack.emplace_front(m_state);
+	// Get current state and undo
+	m_commands = std::make_shared<Commands>(m_undoStack.top());
+	undoCommands();
 
-	auto state = m_undoStack.front();
-	state->recover();
+	// Push to redo stack and clear state
+	m_redoStack.emplace(*m_commands);
+	clearCommands();
 
-	m_undoStack.pop_front();
+	// Pop undo stack
+	m_undoStack.pop();
 
 	return true;
 }
@@ -663,16 +691,19 @@ bool A3::undo()
 // Redo last joint movement
 bool A3::redo()
 {
-	if(m_redoStack.empty())
+	if(m_redoStack.empty() || m_dirty)
 		return false;
 
-	updateState();
-	m_undoStack.emplace_front(m_state);
+	// Get new state and redo
+	m_commands = std::make_shared<Commands>(m_redoStack.top());
+	executeCommands();
 
-	auto state = m_redoStack.front();
-	state->recover();
+	// Push to undo stack and clear state
+	m_undoStack.emplace(*m_commands);
+	clearCommands();
 
-	m_redoStack.pop_front();
+	// Pop redo stack
+	m_redoStack.pop();
 
 	return true;
 }
@@ -736,21 +767,31 @@ void A3::renderSceneGraph(const SceneNode & root) {
 // Recursively traverse and render the scene graph
 void A3::renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix)
 {
-	const mat4 modelMatrix = accumMatrix * node.get_transform();
+	mat4 modelMatrix = accumMatrix * node.get_transform();
 
-	// Render node if it is a GeometryNode
-	if(node.m_nodeType == NodeType::GeometryNode){
-		const GeometryNode &geometryNode = static_cast<const GeometryNode &>(node);
+	switch(node.m_nodeType){
+		case NodeType::JointNode: {
+			const JointNode &jointNode = static_cast<const JointNode &>(node);
+			mat4 xRot = glm::rotate(degreesToRadians(jointNode.m_joint_x.cur), vec3(1,0,0));
+			mat4 yRot = glm::rotate(degreesToRadians(jointNode.m_joint_y.cur), vec3(0,1,0));
+			modelMatrix *= yRot * xRot;
+			break;
+		}
+		
+		case NodeType::GeometryNode: {
+			const GeometryNode &geometryNode = static_cast<const GeometryNode &>(node);
+			updateShaderUniforms(geometryNode, m_view, modelMatrix);
+			// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
+			BatchInfo batchInfo = m_batchInfoMap[geometryNode.meshId];
+			//-- Now render the mesh:
+			m_shader.enable();
+				glDrawArrays(GL_TRIANGLES, batchInfo.startIndex, batchInfo.numIndices);
+			m_shader.disable();
+			break;
+		}
 
-		updateShaderUniforms(geometryNode, m_view, modelMatrix);
-
-		// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
-		BatchInfo batchInfo = m_batchInfoMap[geometryNode.meshId];
-
-		//-- Now render the mesh:
-		m_shader.enable();
-			glDrawArrays(GL_TRIANGLES, batchInfo.startIndex, batchInfo.numIndices);
-		m_shader.disable();
+		default:
+			break;
 	}
 
 	// Recursively run on subtree
@@ -869,11 +910,12 @@ void A3::resetJoints()
 {
 	bool notDone = true;
 
+	// Clear undo stack
 	while(notDone)
 		notDone = undo();
 	
-	m_stateDirty = false;
-	m_redoStack.clear();
+	m_redoStack = std::stack<Commands>();
+	clearCommands();
 }
 
 //----------------------------------------------------------------------------------------
@@ -945,7 +987,7 @@ bool A3::mouseMoveEvent (
 			break;
 		case Joints:
 			if(!m_leftPressed)
-				rotateSelected(xPos, yPos);
+				generateRotations(xPos, yPos);
 			break;
 		default:
 			break;
@@ -973,27 +1015,20 @@ bool A3::mouseButtonInputEvent (
 	if(actions == GLFW_PRESS){
 		switch(button){
 			case GLFW_MOUSE_BUTTON_LEFT:
-				if(m_mode == Joints)
-					pickJoint();
+				if(m_mode == Joints) pickJoint();
 				m_leftPressed = true;
 				break;
 
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = true;
-				if(m_mode == Joints){
-					if(m_stateDirty)
-						saveState();
-					updateState();
-				}
+				if(m_mode == Joints && m_dirty)
+					saveState();
 				break;
 
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = true;
-				if(m_mode == Joints){
-					if(m_stateDirty)
-						saveState();
-					updateState();
-				}
+				if(m_mode == Joints && m_dirty)
+					saveState();
 				break;
 
 			default:
@@ -1012,21 +1047,14 @@ bool A3::mouseButtonInputEvent (
 
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = false;
-				if(m_mode == Joints){
-					if(m_stateDirty)
-						saveState();
-					updateState();
-				}
+				if(m_mode == Joints && m_dirty)
+					saveState();
 				break;
 
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = false;
-
-				if(m_mode == Joints){
-					if(m_stateDirty)
-						saveState();
-					updateState();
-				}
+				if(m_mode == Joints && m_dirty)
+					saveState();
 				break;
 
 			default:

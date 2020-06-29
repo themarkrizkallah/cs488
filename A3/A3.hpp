@@ -10,14 +10,17 @@
 #include "SceneNode.hpp"
 #include "JointNode.hpp"
 #include "GeometryNode.hpp"
-#include "JointState.hpp"
+#include "RotateCommand.hpp"
 
 #include <glm/glm.hpp>
 
 #include <memory>
-#include <forward_list>
+#include <stack>
 #include <list>
 #include <set>
+
+
+typedef std::vector<RotateCommand> Commands;
 
 struct LightSource {
 	glm::vec3 position;
@@ -103,18 +106,20 @@ protected:
 	void pickJoint();
 
 	// State
-	std::shared_ptr<JointStates> m_state;
-	std::forward_list<std::shared_ptr<JointStates>> m_undoStack;
-	std::forward_list<std::shared_ptr<JointStates>> m_redoStack;
+	std::shared_ptr<Commands> m_commands;
+	std::stack<Commands> m_undoStack;
+	std::stack<Commands> m_redoStack;
+	bool m_dirty;
+	bool execute;
 
-	bool m_stateDirty;
-
-	void updateState();
 	void saveState();
 	bool undo();
 	bool redo();
 
-	void rotateSelected(float xPos, float yPos);
+	void generateRotations(float xPos, float yPos);
+	void executeCommands();
+	void undoCommands();
+	void clearCommands();
 
 	// Transformations to entire scene graph
 	glm::mat4 m_position; // Position/Translation matrix
