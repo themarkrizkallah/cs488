@@ -31,7 +31,7 @@ const float AMBIENT_INTENSITY = 0.05f;
 
 // Constants pertaining to transformations
 static const float TRANSLATE_FACTOR = 0.01f;
-static const float ROTATION_FACTOR = 0.1f;
+static const float ROTATION_FACTOR = 0.2f;
 
 static const string MODES[] = {
 	"Position/Orientation (P)",
@@ -558,13 +558,24 @@ void A3::selectJoint(unsigned int id)
 	if(!isParentJoint || (parent->isSelected && !clicked->isSelected))
 		return;
 
-	clicked->isSelected = !clicked->isSelected;
 	parent->isSelected = !parent->isSelected;
 
-	if(parent->isSelected)
+	// Select all direct GeometryNode descendants
+	if(parent->isSelected){
 		m_selectedJoints.insert(static_cast<JointNode *>(parent));
-	else
+		for(auto child : parent->children){
+			if(child->m_nodeType == NodeType::GeometryNode)
+				child->isSelected = true;
+		}
+	}
+	// Unselect all direct GeometryNode descendants
+	else{
 		m_selectedJoints.erase(static_cast<JointNode *>(parent));
+		for(auto child : parent->children){
+			if(child->m_nodeType == NodeType::GeometryNode)
+				child->isSelected = false;
+		}
+	}
 }
 
 //----------------------------------------------------------------------------------------

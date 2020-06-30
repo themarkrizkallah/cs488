@@ -3,6 +3,7 @@ red = gr.material({0.8, 0.2, 0.2}, {0.1, 0.1, 0.1}, 10.0)
 green = gr.material({0.2, 0.8, 0.2}, {0.1, 0.1, 0.1}, 10.0)
 blue = gr.material({0.2, 0.2, 0.8}, {0.1, 0.1, 0.1}, 10.0)
 brown = gr.material({0.5, 0.3, 0}, {0.1, 0.1, 0.1}, 10.0)
+skintone = gr.material({0.7725, 0.549, 0.5216}, {0.1, 0.1, 0.1}, 10.0)
 white = gr.material({1, 1, 1}, {0.1, 0.1, 0.1}, 10.0)
 
 ------------------- Root -------------------
@@ -24,7 +25,6 @@ function drawTorsoDecorations(side)
     rootNode:add_child(pecNode)
 
     ---- Pec Joint ----
-    pecJoint = nil
     pecJoint = gr.joint(side .. 'PecJoint', {-8, 0, 8}, {0, 0, 0})
     pecNode:add_child(pecJoint)
 
@@ -35,8 +35,8 @@ function drawTorsoDecorations(side)
     pecJoint:add_child(pec)
 
     ------------------- Abs -------------------
-    abY = -0.1
-    dY = abY
+    abY = 0.1
+    dY = -0.05
 
     for i = 1, 3 do
         abNode = gr.node(side..'AbNode' ..i)
@@ -53,7 +53,7 @@ function drawTorsoDecorations(side)
         ab:scale(0.1588, 0.1, 0.1)
         abJoint:add_child(ab)
 
-        dY = dY + abY
+        dY = dY - abY
     end
 end
 
@@ -73,9 +73,7 @@ function drawArm(side)
     rootNode:add_child(shoulderNode)
 
     ---- Shoulder Joint ----
-    shoulderJoint = nil
     shoulderJoint = gr.joint(side .. 'ShoulderJoint', {-100, 0, 0}, {0, 0, 0})
-    -- shoulderJoint:rotate('z', x*20)
     shoulderNode:add_child(shoulderJoint)
     
     ---- Shoulder Geometry (Representing Joint) ----
@@ -97,12 +95,7 @@ function drawArm(side)
     shoulderJoint:add_child(elbowNode)
 
     ---- Elbow Joint ----
-    elbowJoint = nil
-    if side == "left" then
-        elbowJoint = gr.joint(side .. 'ElbowJoint', {-115, -45, 0}, {0, 0, 0})
-    else 
-        elbowJoint = gr.joint(side .. 'ElbowJoint', {-115, -45, 0}, {0, 0, 0})
-    end
+    elbowJoint = gr.joint(side .. 'ElbowJoint', {-115, -45, 0}, {0, 0, 0})
     elbowNode:add_child(elbowJoint)
 
     ---- Elbow Geometry (Representing Joint) ----
@@ -124,20 +117,92 @@ function drawArm(side)
     elbowJoint:add_child(wristNode)
 
     ---- Wrist Joint ----
-    wristJoint = nil
-    if side == "left" then
-        wristJoint = gr.joint(side .. 'WristJoint', {-70, 0, 70}, {0, 0, 0})
-    else 
-        wristJoint = gr.joint(side .. 'WristJoint', {-70, 0, 70}, {0, 0, 0})
-    end
+    wristJoint = gr.joint(side .. 'WristJoint', {-70, 0, 70}, {0, 0, 0})
     wristNode:add_child(wristJoint)
 
     ------------------- Hand -------------------
     hand = gr.mesh('sphere', side .. 'Hand')
-    hand:set_material(brown)
+    hand:set_material(skintone)
     hand:translate(0, -0.7, 0.0)
     hand:scale(0.06, 0.1, 0.06)
     wristJoint:add_child(hand)
+end
+
+
+function drawLegs(side)
+    x = 1
+    if side == "left" then
+        x = -1
+    end
+
+    ------------------- Hip -------------------
+    hipNode = gr.node(side .. "HipNode")
+    hipNode:translate(x*0.23, -0.45, 0)
+    hipNode:rotate('y', x*10)
+    waistJoint:add_child(hipNode)
+
+    ---- Hip Joint ----
+    hipJoint = gr.joint(side .. 'HipJoint', {-50, -10, 50}, {0, 0, 0})
+    hipNode:add_child(hipJoint)
+    
+    ---- Hip Geometry (Representing Joint) ----
+    hip = gr.mesh('sphere', side .. 'Hip')
+    hip:set_material(brown)
+    hip:scale(0.16, 0.16, 0.16)
+    hipJoint:add_child(hip)
+
+    ------------------- Femur -------------------
+    femur = gr.mesh('sphere', side .. "Femur")
+    femur:set_material(brown)
+    femur:translate(0, -1, 0)
+    femur:scale(0.1, 0.26, 0.1)
+    hipJoint:add_child(femur)
+
+    ------------------- Knee -------------------
+    kneeNode = gr.node(side .. "KneeNode")
+    kneeNode:translate(0, -0.52, 0)
+    hipJoint:add_child(kneeNode)
+
+    ---- Knee Joint ----
+    kneeJoint = gr.joint(side .. 'KneeJoint', {0, 30, 130}, {0, 0, 0})
+    kneeNode:add_child(kneeJoint)
+    
+    ---- Knee Geometry (Representing Joint) ----
+    knee = gr.mesh('sphere', side .. 'Hip')
+    knee:set_material(brown)
+    knee:scale(0.09, 0.09, 0.09)
+    kneeJoint:add_child(knee)
+
+    ------------------- Tibia -------------------
+    tibia = gr.mesh('sphere', side .. 'Tibia')
+    tibia:set_material(brown)
+    tibia:translate(0, -1, 0.0)
+    tibia:scale(0.07, 0.2, 0.07)
+    kneeJoint:add_child(tibia)
+
+    ------------------- Ankle -------------------
+    ankleNode = gr.node(side .. "AnkleNode")
+    ankleNode:translate(0, -0.4, 0)
+    kneeJoint:add_child(ankleNode)
+
+    ---- Ankle Joint ----
+    ankleJoint = gr.joint(side .. 'AnkleJoint', {-20, -18, 60}, {0, 0, 0})
+    ankleNode:add_child(ankleJoint)
+
+    ------------------- Foot -------------------
+    foot = gr.mesh('sphere', side .. 'Foot')
+    foot:set_material(skintone)
+    foot:translate(0, -0.3, 0.7)
+    foot:scale(0.075, 0.03, 0.17)
+    ankleJoint:add_child(foot)
+
+    ------------------- Heel -------------------
+    heel = gr.mesh('sphere', side .. 'Foot')
+    heel:set_material(skintone)
+    heel:translate(0, -0.3, -0.9)
+    heel:scale(0.06, 0.04, 0.06)
+    ankleJoint:add_child(heel)
+
 end
 
 ------------------- Torso -------------------
@@ -180,7 +245,7 @@ headNode:add_child(headJoint)
 
 ---- Head Geometry ----
 head = gr.mesh('suzanne', 'head')
-head:set_material(brown)
+head:set_material(skintone)
 head:translate(0, -0.5, 0)
 head:scale(0.3, 0.3, 0.3)
 headJoint:add_child(head)
@@ -189,11 +254,25 @@ headJoint:add_child(head)
 drawArm("left")
 drawArm("right")
 
-------------------- Hip -------------------
--- torso = gr.mesh('cube', 'torso')
--- torso:set_material(brown)
--- torso:scale(0.75, 1, 0.75)
--- rootNode:add_child(torso)
+------------------- Waist -------------------
+waistNode = gr.node('waistNode')
+waistNode:translate(0, -0.25, 0)
+rootNode:add_child(waistNode)
+
+---- Wait joint ----
+waistJoint = gr.joint('waistJoint', {-20, 0, 5}, {0, 0, 0})
+waistNode:add_child(waistJoint)
+
+---- Waist Geometry ----
+waist = gr.mesh('cube', 'waist')
+waist:set_material(brown)
+waist:translate(0, -1, 0)
+waist:scale(0.9, 0.3, 0.45)
+waistJoint:add_child(waist)
+
+------------------- Legs -------------------
+drawLegs("left")
+drawLegs("right")
 
 -- Return the root with all of it's childern.  The SceneNode A3::m_rootNode will be set
 -- equal to the return value from this Lua script.
