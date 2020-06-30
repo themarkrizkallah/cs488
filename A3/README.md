@@ -137,6 +137,9 @@ This allows for simplifications in the `undo` and `redo` methods.
 
 `SceneNode` and `GeometryNode` are untouched.
 
+## Shader Modifications
+The [vertex](Assets/VertexShader.vs) and [fragment](Assets/FragmentShader.fs) shaders were updated to use Phong shading (a-la the provided sample shaders). In addition, the [fragment](Assets/FragmentShader.fs) was modified to accept a `picking` boolean uniform that is used while picking.
+
 ## Position Mode
 Trackball is implemented and functions exactly like the given [`Trackball Example`](../Trackball_Example/).
 
