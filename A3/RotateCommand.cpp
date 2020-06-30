@@ -41,8 +41,10 @@ void RotateCommand::execute()
     if(executed)
         return;
 
+    // Apply rotation and appropriately clamp new angle
     jointAngle = glm::clamp(jointAngle + rotAngle, minAngle, maxAngle); 
     prevJointAngle = jointAngle;
+
     executed = true;
 }
 
@@ -53,6 +55,7 @@ void RotateCommand::undo()
     if(!executed)
         return;
 
+    // Restore joint angle and previous angle from snapshots
     jointAngle = snapshot;
     prevJointAngle = prevSnapshot;
 

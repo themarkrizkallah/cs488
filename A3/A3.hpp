@@ -14,13 +14,12 @@
 
 #include <glm/glm.hpp>
 
+#include <chrono>
 #include <memory>
 #include <stack>
 #include <list>
 #include <set>
 
-
-typedef std::vector<RotateCommand> Commands;
 
 struct LightSource {
 	glm::vec3 position;
@@ -61,12 +60,19 @@ protected:
 	void initPerspectiveMatrix();
 	void uploadCommonSceneUniforms();
 	void renderSceneGraph(const SceneNode &node);
+	void renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix);
 	void renderArcCircle();
 
 	glm::mat4 m_perpsective;
 	glm::mat4 m_view;
 
+	/* Light */
 	LightSource m_light;
+	glm::mat4 m_light_T;
+	float m_ambientIntensity;
+	
+	void translateLight(float xPos, float yPos);                   // BONUS
+	void changeLightIntensity(float offset, bool ambient = false); // BONUS
 
 	//-- GL resources for mesh geometry data:
 	GLuint m_vao_meshData;
@@ -90,38 +96,16 @@ protected:
 	std::string m_luaSceneFile;
 
 	std::shared_ptr<SceneNode> m_rootNode;
-	std::vector<SceneNode *> m_nodeMap;
-	std::vector<SceneNode *> m_predMap;
 	unsigned int m_numNodes;
 
+	/* NodeID to SceneNode* and parent mappings */
+	typedef unsigned int NodeID;
+
+	std::vector<SceneNode *> m_nodeMap; // m_nodeId -> SceneNode*
+	std::vector<SceneNode *> m_predMap; // m_nodeId -> Parent SceneNode*
 	void mapScene();
-	void renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix);
 
-	// Picking and joint selection
-	bool m_currentlyPicking;
-	std::set<JointNode *> m_selectedJoints;
-
-	void unselectAllJoints();
-	void selectJoint(unsigned int id);
-	void pickJoint();
-
-	// State
-	std::shared_ptr<Commands> m_commands;
-	std::stack<Commands> m_undoStack;
-	std::stack<Commands> m_redoStack;
-	bool m_dirty;
-	bool execute;
-
-	void saveState();
-	bool undo();
-	bool redo();
-
-	void generateRotations(float xPos, float yPos);
-	void executeCommands();
-	void undoCommands();
-	void clearCommands();
-
-	// Transformations to entire scene graph
+	/* Scene graph Transformations */
 	glm::mat4 m_position; // Position/Translation matrix
 	glm::mat4 m_orientation; // Orientation, matrix
 
@@ -129,22 +113,59 @@ protected:
 	float m_xPrev, m_yPrev;
 	bool m_leftPressed, m_middlePressed, m_rightPressed;
 
-	// Trackball controls and fields
+	/* Trackball and Controls */
 	glm::vec3 m_trackball;
-
 	glm::vec3 getTrackballPos(float xPos, float yPos);
+
 	void trackballPan(float xPos, float yPos);
 	void trackballZoom(float xPos, float yPos);
 	void trackballRotate(const glm::vec3 &v);
 
-	// UI Modes and Options
+	/* UI Modes and Options */
 	enum Mode {
-		Position,
-		Joints,
+		PositionMode,
+		JointsMode,
+		LightMode, // BONUS
 		EndMode
 	};
 	Mode m_mode;
 
+ 	// Rotate joint (wrt y-axis) using relative x-movement
+	bool m_yNaturalMode;
+
+	/* Picking and joint selection */
+	bool m_currentlyPicking;
+	std::set<JointNode *> m_selectedJoints;
+
+	void selectJoint(NodeID id);
+	void unselectAllJoints();
+	void pickJoint();
+
+	/* State and RotationCommands */
+	typedef std::vector<RotateCommand> Commands;
+
+	std::shared_ptr<Commands> m_commands;
+	bool m_dirty;
+
+	void generateRotations(float xPos, float yPos);
+
+	void executeCommands();
+	void undoCommands();
+	void clearCommands();
+
+	std::stack<Commands> m_undoStack;
+	std::stack<Commands> m_redoStack;
+
+	void saveState();
+	bool undo(bool buttonPress = false);
+	bool redo(bool buttonPress = false);
+
+	/* Undo/Redo UI feedback */
+	std::chrono::steady_clock::time_point m_feedbackStart;
+	std::string m_feedback;
+	bool m_feedbackTriggered;
+
+	// Options Menu Items
 	bool m_drawTrackball;
 	bool m_enableZbuffer, m_enableBackfaceCull, m_enableFrontfaceCull;
 

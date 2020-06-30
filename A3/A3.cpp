@@ -18,6 +18,8 @@ using namespace std;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
 
+#include <chrono>
+#include <string>
 #include <memory>
 #include <deque>
 #include <math.h>
@@ -27,19 +29,32 @@ using namespace glm;
 static bool show_gui = true;
 
 const size_t CIRCLE_PTS = 48;
-const float AMBIENT_INTENSITY = 0.05f;
 
-// Constants pertaining to transformations
+// Good default factors and thresholds
 static const float TRANSLATE_FACTOR = 0.01f;
 static const float ROTATION_FACTOR = 0.2f;
+static const float ROTATION_THRESHHOLD = 0.001f;
+static const float INTENSITY_FACTOR = 0.01f;
+
+static const vec3 LIGHT_POSITION(10.0f, 10.0f, 10.0f);
+
+static const float AMBIENT_INTENSITY = 0.05f;
+static const float MIN_AMBIENT_INTENSITY = 0.0f;
+static const float MAX_AMBIENT_INTENSITY = 0.9f;
+
+static const vec3 RGB_INTENSITY(0.9f);
+static const float MIN_RGB_INTENSITY = 0.1f;
+static const float MAX_RGB_INTENSITY = 2.0f;
+
+const chrono::seconds::rep FEEDBACK_SECONDS = 1.5f;
 
 static const string MODES[] = {
 	"Position/Orientation (P)",
-	"Joints (J)"
+	"Joints (J)",
+	"Light (L)" // BONUS
 };
 
-const vec3 SELECTED_COLOUR(0, 94.0f/255.0f, 73.0f/255.0f);
-// const vec3 SELECTED_COLOUR(1.0f, 1.0f, 0.0f);
+const vec3 SELECTED_COLOUR(0, 0.3686f, 0.28627f);
 
 //----------------------------------------------------------------------------------------
 // Count nodes in scene graph rooted at root
@@ -75,16 +90,12 @@ A3::A3(const std::string & luaSceneFile)
 	  m_vbo_vertexNormals(0),
 	  m_vao_arcCircle(0),
 	  m_vbo_arcCircle(0)
-{
-
-}
+{}
 
 //----------------------------------------------------------------------------------------
 // Destructor
 A3::~A3()
-{
-
-}
+{}
 
 //----------------------------------------------------------------------------------------
 /*
@@ -94,7 +105,6 @@ void A3::init()
 {
 	// Set the background colour.
 	glClearColor(0.85, 0.85, 0.85, 1.0);
-	// glClearColor(0.35, 0.35, 0.35, 1.0);
 
 	createShaderProgram();
 
@@ -306,8 +316,49 @@ void A3::initViewMatrix() {
 //----------------------------------------------------------------------------------------
 void A3::initLightSources() {
 	// World-space position
-	m_light.position = vec3(10.0f, 10.0f, 10.0f);
-	m_light.rgbIntensity = vec3(0.8f); // light
+	m_light.position = LIGHT_POSITION;
+	m_light.rgbIntensity = RGB_INTENSITY;
+	m_ambientIntensity = AMBIENT_INTENSITY;
+	m_light_T = mat4();
+}
+
+//----------------------------------------------------------------------------------------
+// Translate light w.r.t world coordinates
+void A3::translateLight(float xPos, float yPos) {
+	const float xDelta = xPos - m_xPrev;
+	const float yDelta = yPos - m_yPrev;
+
+	const float xDist = xDelta * TRANSLATE_FACTOR;
+	const float yDist = -yDelta * TRANSLATE_FACTOR;
+
+	if(m_leftPressed)
+		m_light_T = glm::translate(m_light_T, vec3(xDist, yDist, 0));
+	
+	if(m_rightPressed)
+		m_light_T = glm::translate(m_light_T, vec3(0, 0, yDist));
+}
+
+//----------------------------------------------------------------------------------------
+// Change light intesity
+void A3::changeLightIntensity(float offset, bool ambient) {
+	const float delta = offset > 0 ? INTENSITY_FACTOR : -INTENSITY_FACTOR;
+
+	// Increment ambient intensity
+	if(ambient){
+		m_ambientIntensity = glm::clamp(
+			m_ambientIntensity + delta, 
+			MIN_AMBIENT_INTENSITY, 
+			MAX_AMBIENT_INTENSITY
+		);
+
+	// Increment RGB intensity
+	} else {
+		m_light.rgbIntensity = glm::clamp(
+			m_light.rgbIntensity + delta, 
+			MIN_RGB_INTENSITY, 
+			MAX_RGB_INTENSITY
+		);
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -325,8 +376,14 @@ void A3::uploadCommonSceneUniforms() {
 		//-- Set LightSource uniform for the scene:
 		if (!m_currentlyPicking){
 			{
+				// Translate light
+				vec4 lightPoint(m_light.position.x, m_light.position.y, m_light.position.z, 1.0f);
+				lightPoint = m_light_T * lightPoint;
+
+				const vec3 lightPos(lightPoint.x, lightPoint.y, lightPoint.z);
+
 				location = m_shader.getUniformLocation("light.position");
-				glUniform3fv(location, 1, value_ptr(m_light.position));
+				glUniform3fv(location, 1, value_ptr(lightPos));
 				location = m_shader.getUniformLocation("light.rgbIntensity");
 				glUniform3fv(location, 1, value_ptr(m_light.rgbIntensity));
 				CHECK_GL_ERRORS;
@@ -335,7 +392,7 @@ void A3::uploadCommonSceneUniforms() {
 			//-- Set background light ambient intensity
 			{
 				location = m_shader.getUniformLocation("ambientIntensity");
-				vec3 ambientIntensity(AMBIENT_INTENSITY);
+				vec3 ambientIntensity(m_ambientIntensity);
 				glUniform3fv(location, 1, value_ptr(ambientIntensity));
 				CHECK_GL_ERRORS;
 			}
@@ -352,13 +409,7 @@ void A3::uploadCommonSceneUniforms() {
 void A3::appLogic()
 {
 	// Place per frame, application logic here ...
-
 	uploadCommonSceneUniforms();
-
-	// Execute Commands
-	if(m_mode == Joints){
-		executeCommands();
-	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -367,9 +418,8 @@ void A3::appLogic()
  */
 void A3::guiLogic()
 {
-	if( !show_gui ) {
+	if(!show_gui)
 		return;
-	}
 
 	static bool firstRun(true);
 	if (firstRun) {
@@ -389,6 +439,7 @@ void A3::guiLogic()
 
 		// Main Menu Bar
 		if (ImGui::BeginMainMenuBar()) {
+			// Application Menu
 			if (ImGui::BeginMenu("Application")) {
 				if (ImGui::MenuItem("Reset Position", "I"))
 					resetPosition();
@@ -401,6 +452,9 @@ void A3::guiLogic()
 
 				if (ImGui::MenuItem("Reset All", "A"))
 					resetAll();
+
+				if(ImGui::MenuItem( "Reset Defaults", "D"))
+					resetDefaults();
 				
 				ImGui::Separator();
 
@@ -410,16 +464,18 @@ void A3::guiLogic()
 				ImGui::EndMenu();
 			}
 
+			// Edit Menu
 			if (ImGui::BeginMenu("Edit")){
 				if (ImGui::MenuItem("Undo", "U", false, !m_undoStack.empty()))
-					undo();
+					undo(true);
 
 				if (ImGui::MenuItem("Redo", "R", false, !m_redoStack.empty()))
-					redo();
+					redo(true);
 
 				ImGui::EndMenu();
 			}
 
+			// Options Menu
 			if (ImGui::BeginMenu("Options")){
 				if (ImGui::Checkbox("Circle (C)", &m_drawTrackball)){}
 
@@ -428,6 +484,10 @@ void A3::guiLogic()
 				if (ImGui::Checkbox("Z-buffer (Z)", &m_enableZbuffer)) {}
 				if (ImGui::Checkbox("Backface culling (B)", &m_enableBackfaceCull)) {}
 				if (ImGui::Checkbox("Frontface culling (F)", &m_enableFrontfaceCull)) {}
+
+				ImGui::Separator();
+
+				if (ImGui::Checkbox("Natural Joint Control (N)", &m_yNaturalMode)){}
 				
 				ImGui::EndMenu();
 			}
@@ -436,24 +496,44 @@ void A3::guiLogic()
 		}
 
 		// Radio Buttons
-		for (int mode = Position; mode != EndMode; ++mode){
+		for (int mode = PositionMode; mode != EndMode; ++mode){
 			ImGui::PushID(mode);
-
 			if(ImGui::RadioButton(MODES[mode].c_str(), (int*) &m_mode, mode)) {}
-
 			ImGui::PopID();
 		}
 
-		if(ImGui::Button( "Reset Defaults (D)"))
-			resetDefaults();
+		// BONUS
+		if(m_mode == LightMode){
+			ImGui::SliderFloat(
+				"", 
+				&m_ambientIntensity, 
+				MIN_AMBIENT_INTENSITY,
+				MAX_AMBIENT_INTENSITY,
+				"Ambient Intensity = %.3f"
+			);
+
+			if(ImGui::Button("Reset Light"))
+				initLightSources();
+		}
 
 		ImGui::Text( "Framerate: %.1f FPS", ImGui::GetIO().Framerate );
+
+		// Show/Hide Undo/Redo related feedback
+		if(m_feedbackTriggered){
+			auto now = chrono::steady_clock::now();
+			auto elapsed = chrono::duration_cast<chrono::seconds>(now - m_feedbackStart).count();
+		
+			if(elapsed <= FEEDBACK_SECONDS)
+				ImGui::Text("Error: %s", m_feedback.c_str());
+			else
+				m_feedbackTriggered = false;
+		}
 
 	ImGui::End();
 }
 
 //----------------------------------------------------------------------------------------
-// Update mesh specific shader uniforms:
+// Update mesh specific shader uniforms
 void A3::updateShaderUniforms(
 		const GeometryNode & node,
 		const glm::mat4 & viewMatrix,
@@ -469,14 +549,16 @@ void A3::updateShaderUniforms(
 		CHECK_GL_ERRORS;
 
 		if(m_currentlyPicking){
-			const unsigned int idx = node.m_nodeId;
+			const NodeID id = node.m_nodeId;
 
-			float r = float(idx&0xff) / 255.0f;
-			float g = float((idx>>8)&0xff) / 255.0f;
-			float b = float((idx>>16)&0xff) / 255.0f;
+			// Construct false colurs from id
+			float r = float(id&0xff) / 255.0f;
+			float g = float((id>>8)&0xff) / 255.0f;
+			float b = float((id>>16)&0xff) / 255.0f;
 
 			location = m_shader.getUniformLocation("material.kd");
-			glUniform3f( location, r, g, b );
+			glUniform3f(location, r, g, b);
+
 			CHECK_GL_ERRORS;
 
 		} else {
@@ -529,23 +611,13 @@ void A3::draw() {
 	if(m_enableBackfaceCull || m_enableFrontfaceCull)
 		glDisable(GL_CULL_FACE);
 
-	if(m_mode == Position && m_drawTrackball)
+	if(m_mode == PositionMode && m_drawTrackball)
 		renderArcCircle();
 }
 
 //----------------------------------------------------------------------------------------
-// Unselect all joints
-void A3::unselectAllJoints()
-{
-	m_selectedJoints.clear();
-
-	for(auto node : m_nodeMap)
-		node->isSelected = false;
-}
-
-//----------------------------------------------------------------------------------------
-// Select joint using id
-void A3::selectJoint(unsigned int id)
+// Select joint using NodeID
+void A3::selectJoint(NodeID id)
 {
 	if(id >= m_nodeMap.size())
 		return;
@@ -553,9 +625,9 @@ void A3::selectJoint(unsigned int id)
 	SceneNode *clicked = m_nodeMap[id];
 	SceneNode *parent = m_predMap[id];
 
-	bool isParentJoint = parent && parent->m_nodeType == NodeType::JointNode;
+	const bool isParentAJoint = parent && parent->m_nodeType == NodeType::JointNode;
 
-	if(!isParentJoint || (parent->isSelected && !clicked->isSelected))
+	if(!isParentAJoint || (parent->isSelected && !clicked->isSelected))
 		return;
 
 	parent->isSelected = !parent->isSelected;
@@ -579,6 +651,16 @@ void A3::selectJoint(unsigned int id)
 }
 
 //----------------------------------------------------------------------------------------
+// Unselect all joints
+void A3::unselectAllJoints()
+{
+	m_selectedJoints.clear();
+
+	for(auto node : m_nodeMap)
+		node->isSelected = false;
+}
+
+//----------------------------------------------------------------------------------------
 // Pick joint based on mouse click
 void A3::pickJoint()
 {
@@ -592,6 +674,7 @@ void A3::pickJoint()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glClearColor(0.85, 0.85, 0.85, 1.0);
 
+	// Draw graph in false colours
 	draw();
 
 	CHECK_GL_ERRORS;
@@ -613,7 +696,7 @@ void A3::pickJoint()
 	CHECK_GL_ERRORS;
 
 	// Reassemble the object ID.
-	unsigned int objectID = buffer[0] + (buffer[1] << 8) + (buffer[2] << 16);
+	NodeID objectID = buffer[0] + (buffer[1] << 8) + (buffer[2] << 16);
 	selectJoint(objectID);
 
 	m_currentlyPicking = false;
@@ -621,106 +704,9 @@ void A3::pickJoint()
 	CHECK_GL_ERRORS;
 }
 
-//----------------------------------------------------------------------------------------
-// Save m_commands on m_undoStack and clear m_redoStack
-void A3::saveState()
-{
-	m_undoStack.emplace(*m_commands);
-	m_redoStack = std::stack<Commands>();
-	clearCommands();
-}
 
 //----------------------------------------------------------------------------------------
-// Rotate currently selected joints
-void A3::generateRotations(float xPos, float yPos)
-{
-	const float xAngle = (yPos - m_yPrev) * ROTATION_FACTOR;
-	const float yAngle = (xPos - m_xPrev) * ROTATION_FACTOR;
-
-	// Reset m_commands
-	if((m_middlePressed || m_rightPressed) && m_selectedJoints.size() > 0)
-		m_dirty = true;
-
-	// Rotate along x-axis
-	if(m_middlePressed){
-		for(auto node : m_selectedJoints)
-			m_commands->emplace_back(node, 'x', xAngle);
-	}
-	
-	// Rotate along y-axis
-	if(m_rightPressed){
-		for(auto node : m_selectedJoints)
-			m_commands->emplace_back(node, 'y', yAngle);
-	}
-}
-
-void A3::executeCommands()
-{
-	if(m_commands){
-		for(auto &cmd : *m_commands)
-			cmd.execute();
-	}
-}
-
-void A3::undoCommands()
-{
-	if(m_commands){
-   		for (auto cmd =  m_commands->rbegin(); cmd != m_commands->rend(); ++cmd)
-			cmd->undo();
-	}
-}
-
-void A3::clearCommands()
-{
-	m_commands = std::make_shared<Commands>();
-	m_dirty = false;
-}
-
-
-//----------------------------------------------------------------------------------------
-// Undo last joint movement
-bool A3::undo()
-{
-	if(m_undoStack.empty() || m_dirty)
-		return false;
-
-	// Get current state and undo
-	m_commands = std::make_shared<Commands>(m_undoStack.top());
-	undoCommands();
-
-	// Push to redo stack and clear state
-	m_redoStack.emplace(*m_commands);
-	clearCommands();
-
-	// Pop undo stack
-	m_undoStack.pop();
-
-	return true;
-}
-
-//----------------------------------------------------------------------------------------
-// Redo last joint movement
-bool A3::redo()
-{
-	if(m_redoStack.empty() || m_dirty)
-		return false;
-
-	// Get new state and redo
-	m_commands = std::make_shared<Commands>(m_redoStack.top());
-	executeCommands();
-
-	// Push to undo stack and clear state
-	m_undoStack.emplace(*m_commands);
-	clearCommands();
-
-	// Pop redo stack
-	m_redoStack.pop();
-
-	return true;
-}
-
-//----------------------------------------------------------------------------------------
-// Map node ID to SceneNode object and node ID to its direct predecessor
+// Map node IDs to their SceneNode object and direct predecessor
 void A3::mapScene()
 {
 	if(!m_rootNode)
@@ -766,6 +752,7 @@ void A3::renderSceneGraph(const SceneNode & root) {
 	// could put a set of mutually recursive functions in this class, which
 	// walk down the tree from nodes of different types.
 
+	// Apply global position and orientation w.r.t the screen not model coordinates
 	const mat4 rootMatrix = root.get_transform();
 	renderSceneNode(root, m_position * rootMatrix * m_orientation * glm::inverse(rootMatrix));
 
@@ -781,6 +768,7 @@ void A3::renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix)
 	mat4 modelMatrix = accumMatrix * node.get_transform();
 
 	switch(node.m_nodeType){
+		// JointNode, generate rotation matrices
 		case NodeType::JointNode: {
 			const JointNode &jointNode = static_cast<const JointNode &>(node);
 			mat4 xRot = glm::rotate(degreesToRadians(jointNode.m_joint_x.cur), vec3(1,0,0));
@@ -789,6 +777,7 @@ void A3::renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix)
 			break;
 		}
 		
+		// GeometryNode, draw it!
 		case NodeType::GeometryNode: {
 			const GeometryNode &geometryNode = static_cast<const GeometryNode &>(node);
 			updateShaderUniforms(geometryNode, m_view, modelMatrix);
@@ -805,7 +794,7 @@ void A3::renderSceneNode(const SceneNode &node, const glm::mat4 &accumMatrix)
 			break;
 	}
 
-	// Recursively run on subtree
+	// Render subtree and accumulate transformations
 	for (const SceneNode *child : node.children)
 		renderSceneNode(*child, modelMatrix);
 }
@@ -816,16 +805,19 @@ void A3::renderArcCircle() {
 	glBindVertexArray(m_vao_arcCircle);
 
 	m_shader_arcCircle.enable();
-		GLint m_location = m_shader_arcCircle.getUniformLocation( "M" );
+
+		GLint m_location = m_shader_arcCircle.getUniformLocation("M");
 		float aspect = float(m_framebufferWidth)/float(m_framebufferHeight);
-		glm::mat4 M;
-		if( aspect > 1.0 ) {
-			M = glm::scale( glm::mat4(), glm::vec3( 0.5/aspect, 0.5, 1.0 ) );
-		} else {
-			M = glm::scale( glm::mat4(), glm::vec3( 0.5, 0.5*aspect, 1.0 ) );
-		}
+		mat4 M;
+
+		if(aspect > 1.0f)
+			M = glm::scale( glm::mat4(), glm::vec3(0.5/aspect, 0.5, 1.0));
+		else
+			M = glm::scale( glm::mat4(), glm::vec3(0.5, 0.5*aspect, 1.0));
+
 		glUniformMatrix4fv( m_location, 1, GL_FALSE, value_ptr( M ) );
 		glDrawArrays( GL_LINE_LOOP, 0, CIRCLE_PTS );
+
 	m_shader_arcCircle.disable();
 
 	glBindVertexArray(0);
@@ -891,7 +883,7 @@ void A3::trackballZoom(float xPos, float yPos)
 //----------------------------------------------------------------------------------------
 // Rotate trackball
 void A3::trackballRotate(const vec3 &v) {
-	const vec3 n = glm::cross(v, m_trackball); // Axis of rotation
+	const vec3 n = glm::cross(v, m_trackball);
 	const float projection = glm::dot(v, m_trackball);
 	const float theta = glm::acos(projection);
 
@@ -899,6 +891,140 @@ void A3::trackballRotate(const vec3 &v) {
 		mat4 R = glm::rotate(mat4(), -theta, n);
 		m_orientation = R * m_orientation;
 	}
+}
+
+//----------------------------------------------------------------------------------------
+// Generate RotationCommands for selected joints
+void A3::generateRotations(float xPos, float yPos)
+{
+	const float xDelta = xPos - m_xPrev;
+	const float yDelta = yPos - m_yPrev;
+
+	const float xAxisAngle = yDelta * ROTATION_FACTOR;
+	const float yAxisAngle = (m_yNaturalMode ? xDelta : yDelta) * ROTATION_FACTOR;
+
+	const bool xSignificant = std::abs(xAxisAngle) >= ROTATION_THRESHHOLD;
+	const bool ySignificant = std::abs(yAxisAngle) >= ROTATION_THRESHHOLD;
+
+	// Check if we need to process rotations
+	if(m_selectedJoints.empty() || !(xSignificant || ySignificant))
+		return;
+
+	// Rotate along x-axis, set dirty bit to true
+	if(m_middlePressed && xSignificant){
+		for(auto node : m_selectedJoints)
+			m_commands->emplace_back(node, 'x', xAxisAngle);
+
+		m_dirty = true;
+	}
+	
+	// Rotate along y-axis, set dirty bit to true
+	if(m_rightPressed && ySignificant){
+		for(auto node : m_selectedJoints)
+			m_commands->emplace_back(node, 'y', yAxisAngle);
+
+		m_dirty = true;
+	}
+
+	if(m_dirty)
+		executeCommands();
+}
+
+//----------------------------------------------------------------------------------------
+// Execute all current RotationCommands
+void A3::executeCommands()
+{
+	if(m_commands){
+		for(auto &cmd : *m_commands)
+			cmd.execute();
+	}
+}
+
+//----------------------------------------------------------------------------------------
+// Undo all current RotationCommands
+void A3::undoCommands()
+{
+	if(m_commands){
+   		for (auto cmd =  m_commands->rbegin(); cmd != m_commands->rend(); ++cmd)
+			cmd->undo();
+	}
+}
+
+//----------------------------------------------------------------------------------------
+// Clear all RotationCommands and reset dirty bit
+void A3::clearCommands()
+{
+	m_commands = std::make_shared<Commands>();
+	m_dirty = false;
+}
+
+//----------------------------------------------------------------------------------------
+// Save m_commands on m_undoStack and clear m_redoStack
+void A3::saveState()
+{
+	m_undoStack.emplace(*m_commands);
+	m_redoStack = std::stack<Commands>();
+	clearCommands();
+}
+
+//----------------------------------------------------------------------------------------
+// Undo last joint movement
+bool A3::undo(bool buttonPress)
+{
+	if(m_undoStack.empty()) {
+		if(buttonPress){
+			m_feedback = "Cannot undo!";
+			m_feedbackStart = chrono::steady_clock::now();
+			m_feedbackTriggered = true;
+		}
+
+		return false;
+	}
+	else if(m_dirty)
+		return false;
+
+	// Get current state and undo
+	m_commands = std::make_shared<Commands>(m_undoStack.top());
+	undoCommands();
+
+	// Push to redo stack and clear state
+	m_redoStack.emplace(*m_commands);
+	clearCommands();
+
+	// Pop undo stack
+	m_undoStack.pop();
+
+	return true;
+}
+
+//----------------------------------------------------------------------------------------
+// Redo last joint movement
+bool A3::redo(bool buttonPress)
+{
+	if(m_redoStack.empty()) {
+		if(buttonPress){
+			m_feedback = "Cannot redo!";
+			m_feedbackStart = chrono::steady_clock::now();
+			m_feedbackTriggered = true;
+		}
+		return false;
+
+	} else if(m_dirty) {
+		return false;
+	}
+
+	// Get new state and redo
+	m_commands = std::make_shared<Commands>(m_redoStack.top());
+	executeCommands();
+
+	// Push to undo stack and clear state
+	m_undoStack.emplace(*m_commands);
+	clearCommands();
+
+	// Pop redo stack
+	m_redoStack.pop();
+
+	return true;
 }
 
 //----------------------------------------------------------------------------------------
@@ -927,6 +1053,8 @@ void A3::resetJoints()
 	
 	m_redoStack = std::stack<Commands>();
 	clearCommands();
+
+	m_feedbackTriggered = false;
 }
 
 //----------------------------------------------------------------------------------------
@@ -947,7 +1075,11 @@ void A3::resetDefaults()
 	m_enableZbuffer = true;
 	m_enableBackfaceCull = false;
 	m_enableFrontfaceCull = false;
-	m_mode = Position;
+	m_mode = PositionMode;
+	m_yNaturalMode = false;
+
+	// Reset Light
+	initLightSources();
 
 	unselectAllJoints();
 	resetAll();
@@ -986,7 +1118,8 @@ bool A3::mouseMoveEvent (
 	vec3 trackball = getTrackballPos(xPos, yPos);
 
 	switch(m_mode){
-		case Position:
+		// Trackball
+		case PositionMode:
 			if(m_leftPressed)
 				trackballPan(xPos, yPos);
 
@@ -996,10 +1129,18 @@ bool A3::mouseMoveEvent (
 			if(m_rightPressed)
 				trackballRotate(trackball);
 			break;
-		case Joints:
+		
+		// Joint Manipulation
+		case JointsMode:
 			if(!m_leftPressed)
 				generateRotations(xPos, yPos);
 			break;
+
+		// Light
+		case LightMode:
+			translateLight(xPos, yPos);
+			break;
+
 		default:
 			break;
 	}
@@ -1026,19 +1167,23 @@ bool A3::mouseButtonInputEvent (
 	if(actions == GLFW_PRESS){
 		switch(button){
 			case GLFW_MOUSE_BUTTON_LEFT:
-				if(m_mode == Joints) pickJoint();
+				if(m_mode == JointsMode) pickJoint();
 				m_leftPressed = true;
 				break;
 
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = true;
-				if(m_mode == Joints && m_dirty)
+
+				// Initiating new rotations, save state if applicable
+				if(m_mode == JointsMode && m_dirty)
 					saveState();
 				break;
 
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = true;
-				if(m_mode == Joints && m_dirty)
+
+				// Initiating new rotations, save state if applicable
+				if(m_mode == JointsMode && m_dirty)
 					saveState();
 				break;
 
@@ -1058,13 +1203,17 @@ bool A3::mouseButtonInputEvent (
 
 			case GLFW_MOUSE_BUTTON_MIDDLE:
 				m_middlePressed = false;
-				if(m_mode == Joints && m_dirty)
+
+				// Finished rotating joints, save state
+				if(m_mode == JointsMode && m_dirty)
 					saveState();
 				break;
 
 			case GLFW_MOUSE_BUTTON_RIGHT:
 				m_rightPressed = false;
-				if(m_mode == Joints && m_dirty)
+
+				// Finished rotating joints, save state
+				if(m_mode == JointsMode && m_dirty)
 					saveState();
 				break;
 
@@ -1088,6 +1237,20 @@ bool A3::mouseScrollEvent (
 	bool eventHandled(false);
 
 	// Fill in with event handling code...
+	switch(m_mode){
+		case LightMode:
+			if(xOffSet != 0.0f)
+				changeLightIntensity(xOffSet, true);
+
+			if(yOffSet != 0.0f)
+				changeLightIntensity(yOffSet);
+	
+			eventHandled = true;
+			break;
+		
+		default:
+			break;
+	}
 
 	return eventHandled;
 }
@@ -1122,11 +1285,17 @@ bool A3::keyInputEvent (
 				case GLFW_KEY_M:
 					show_gui = !show_gui;
 					break;
+				case GLFW_KEY_N:
+					m_yNaturalMode = !m_yNaturalMode;
+					break;
 				case GLFW_KEY_P:
-					m_mode = Position;
+					m_mode = PositionMode;
 					break;
 				case GLFW_KEY_J:
-					m_mode = Joints;
+					m_mode = JointsMode;
+					break;
+				case GLFW_KEY_L: // BONUS
+					m_mode = LightMode;
 					break;
 				
 				// Application Menu Shortcuts
@@ -1151,10 +1320,10 @@ bool A3::keyInputEvent (
 
 				// Edit Menu Shortucts
 				case GLFW_KEY_U:
-					undo();
+					undo(true);
 					break;
 				case GLFW_KEY_R:
-					redo();
+					redo(true);
 					break;
 
 				// Option Menu Shortucts
