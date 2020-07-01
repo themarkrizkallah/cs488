@@ -38,7 +38,7 @@ function drawHead()
     neckJoint:add_child(headNode)
 
     ---- Head Joint ----
-    headJoint = gr.joint('headJoint', {0, 0, 0}, {-40, 0, 40})
+    headJoint = gr.joint('headJoint', {0, 0, 0}, {-30, 0, 30})
     headNode:add_child(headJoint)
 
     ---- Head Geometry ----
@@ -128,7 +128,7 @@ function drawArm(side)
     rootNode:add_child(shoulderNode)
 
     ---- Shoulder Joint ----
-    shoulderJoint = gr.joint(side .. 'ShoulderJoint', {-100, 0, 30}, {0, 0, 0})
+    shoulderJoint = gr.joint(side .. 'ShoulderJoint', {-90, 0, 30}, {0, 0, 0})
     shoulderNode:add_child(shoulderJoint)
     
     ---- Shoulder Geometry (Representing Joint) ----

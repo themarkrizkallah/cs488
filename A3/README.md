@@ -116,8 +116,6 @@ rootNode (SceneNode)
 
 Furthermore, the puppet has more than 15 degrees of freedom as required. Individual abs and pecs can be manipulated!
 
-**Note**: If the head is rotated all the way to the right or left, the tip of the hand can clip the very edge of the ear if the appropriate arm and hand is rotated all the way up. Since ears are very malleable and flexible in real life, this was a concsious decision. It could have been avoided by restricting the y-axis of the head joint, scaling down the head, restricting the x-axis rotation of either the shoulder, elbow, or wrist, moving the head up, rotating the shoulders inward, etc. All of that being said, mitigating this would require sacrificing the aesthetic of the puppet or degrees of freedom. No other intersection of body parts is possible with this puppet.
-
 ## Picking and Selection
 `JointNodes` are selected by clicking on any of their direct `GeometryNode` children. 
 
@@ -126,6 +124,11 @@ Selecting a `JointNode` highlights *all* of its direct `GeometryNode` children (
 `SceneNodes` are *never* selected. In the included puppet, `GeometryNodes` are used to visualize some `JointNodes`. This means that if a `GeometryNode` is a direct child of a `SceneNode`, clicking on it does *not* select it nor highlight it (cannot select the joint that way either). This way is aesthetically pleasing and consistent with the assignment description.
 
 Selection records are stored in an `std::set` and in the appropriate `isSelected` field of the respective `SceneNode` object.
+
+**Note**: Picking still works with `Z-buffer` turned off, but it might be a little harder to use.
+
+## Culling
+Culling works as expected. If both `Backface culling` and `Frontface culling` are enabled, the puppet is no longer on the screen; thus, picking is impossible. That being said, joints that are selected prior to both culling modes being enabled are still selected and can be manipulated.
 
 ## Data Structure Modifications
 2 `float` fields are added to `JointNode::JointRange`, namely `cur` and `prev`.
