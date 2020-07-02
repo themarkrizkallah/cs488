@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #pragma once
 
@@ -39,7 +39,6 @@ public:
     void rotate(char axis, float angle);
     void scale(const glm::vec3& amount);
     void translate(const glm::vec3& amount);
-
 
 	friend std::ostream & operator << (std::ostream & os, const SceneNode & node);
 

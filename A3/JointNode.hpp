@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #pragma once
 
@@ -14,8 +14,8 @@ public:
 
 	struct JointRange {
 		double min, init, max;
+		float cur, prev;
 	};
-
 
 	JointRange m_joint_x, m_joint_y;
 };
