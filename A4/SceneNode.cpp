@@ -1,6 +1,8 @@
-// Winter 2020
+// Spring 2020
 
+#include "Ray.hpp"
 #include "SceneNode.hpp"
+#include "GeometryNode.hpp"
 
 #include "cs488-framework/MathUtils.hpp"
 
@@ -135,4 +137,48 @@ std::ostream & operator << (std::ostream & os, const SceneNode & node) {
 
 	os << "]\n";
 	return os;
+}
+
+/*
+In hierarchical ray tracing, on "the way down" you should transform the point and vector 
+forming the ray with a node's inverse transform. On "the way back up" you should transform the 
+intersection point by the original transformation, and (assuming you represent the normal as a column vector) 
+you should transform the normal with the transpose of the upper-3×3 part of the inverse transform.
+*/
+
+//---------------------------------------------------------------------------------------
+HitRecord SceneNode::hit(const Ray &r, const glm::mat4 &worldToModel) const 
+{
+	HitRecord rec;
+
+	// On "the way down", transform ray by node's inverse transform
+	const mat4 accumMat = get_inverse() * worldToModel;
+	const Ray r_model = accumMat * r;
+
+	// GeometryNode, intersect primitive
+	if(m_nodeType == NodeType::GeometryNode){
+		const GeometryNode *geometryNode = static_cast<const GeometryNode *>(this);
+		rec = geometryNode->m_primitive->hit(r_model);
+
+		// Node is hit, store material in hit record
+		if(rec.hit)
+			rec.mat = geometryNode->m_material;
+	}
+
+	// Check if children are hit. If child is hit, use the closest intersection
+	for(auto child : children){
+		HitRecord childRec = child->hit(r_model, accumMat);
+		if(childRec.hit){
+			if(rec.hit == false)
+				rec = childRec;
+			else
+				rec = std::min(rec, childRec);
+		}
+	}
+
+	// On "the way up", transform normal with transpose of inverse transform
+	if(rec.hit)
+		rec.n = glm::normalize(glm::transpose(accumMat) * rec.n);
+
+	return rec;
 }
