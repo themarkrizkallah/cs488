@@ -4,7 +4,7 @@
 #include <iostream>
 #include <glm/glm.hpp>
 
-#define OLD_RAY
+// #define OLD_RAY
 
 using namespace glm;
 
@@ -32,12 +32,20 @@ vec4 Ray::direction() const{
 // Compute point on the ray using p(t) = e + td 
 vec4 Ray::pointAt(float t) const
 {
-    return origin + t*direction();
+    vec4 point = origin + t * direction();
+    point.w = 1.0f;
+    return point;
 }
 
 Ray operator*(const mat4 &M, const Ray& r)
 {
-    return Ray(M * r.origin, M * r.dest);
+    vec4 transformedOrigin = M * r.origin; 
+    transformedOrigin.w = 1.0f;
+
+    vec4 transformedDest = M * r.dest; 
+    transformedDest.w = 1.0f;
+
+    return Ray(transformedOrigin, transformedDest);
 }
 #else
 // Default Constructor
@@ -65,11 +73,12 @@ Ray operator*(const mat4 &M, const Ray& r)
 {
     return Ray(M * r.origin, M * r.direction);
 }
+
 #endif
 
 // Default Constructor
-HitRecord::HitRecord(bool hit, double t, const vec4 &n, Material *mat)
-    : hit(hit), t(t), n(n), mat(mat)
+HitRecord::HitRecord(bool hit, double t, const vec4 &n, const vec4 &point, Material *mat)
+    : hit(hit), t(t), n(n), point(point), mat(mat)
 {}
 
 // Comparison operators

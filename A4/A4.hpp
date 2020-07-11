@@ -8,12 +8,16 @@
 #include "SceneNode.hpp"
 #include "Light.hpp"
 #include "Ray.hpp"
-#include "Colour.hpp"
 #include "Image.hpp"
 
 const int MAX_HITS = 100;
+const glm::vec3 BackgroundColour(0.529f, 0.808f, 0.922f);
 
-const Colour BackgroundColour(0.529, 0.808, 0.922);
+enum Cone {
+	R,
+	G,
+	B
+};
 
 glm::mat4 generateDCStoWorldMat(
 	// Pixel dimensions, (n_x, n_y)
@@ -26,7 +30,7 @@ glm::mat4 generateDCStoWorldMat(
 	const double fovy
 );
 
-Colour rayColour(
+glm::vec3 rayColour(
 	SceneNode *node, 
 	const Ray &r, 
 	const int hitCount,
@@ -34,7 +38,7 @@ Colour rayColour(
 	const std::list<Light *> &lights
 );
 
-Colour directColour(
+glm::vec3 directColour(
 	SceneNode *node,
 	const Ray &primRay,
 	const HitRecord &primRec,
@@ -59,9 +63,3 @@ void A4_Render(
 		const glm::vec3 & ambient,
 		const std::list<Light *> & lights
 );
-
-// glm::vec2 computeUV(
-// 	const std::pair<size_t, size_t> &pixelDim,
-// 	const std::pair<double, double> &dim,
-// 	const glm::vec2 &pixelPos
-// );

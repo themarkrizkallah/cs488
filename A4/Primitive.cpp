@@ -49,7 +49,6 @@ HitRecord NonhierSphere::hit(const Ray &r) const
 
     const vec3 e(r.origin.x, r.origin.y, r.origin.z);
     const vec3 d(r.direction());
-    // const vec3 d(r.direction);
     const vec3 centreDir = e - m_pos;
 
     // Quadratic formula parameters
@@ -69,7 +68,8 @@ HitRecord NonhierSphere::hit(const Ray &r) const
 
     rec.hit = true;
     rec.t = (minRoot >= EPSILON)? minRoot : maxRoot;
-    rec.n = glm::normalize(r.pointAt(rec.t) - vec4(m_pos, 0));
+    rec.n = r.pointAt(rec.t) - vec4(m_pos, 1);
+    rec.point = r.pointAt(rec.t);
 
     return rec;
 }

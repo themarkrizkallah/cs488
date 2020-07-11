@@ -152,8 +152,8 @@ HitRecord SceneNode::hit(const Ray &r, const glm::mat4 &worldToModel) const
 	HitRecord rec;
 
 	// On "the way down", transform ray by node's inverse transform
-	const mat4 accumMat = get_inverse() * worldToModel;
-	const Ray r_model = accumMat * r;
+	const mat4 accumMat = invtrans * worldToModel;
+	const Ray r_model = invtrans * r;
 
 	// GeometryNode, intersect primitive
 	if(m_nodeType == NodeType::GeometryNode){
@@ -177,8 +177,10 @@ HitRecord SceneNode::hit(const Ray &r, const glm::mat4 &worldToModel) const
 	}
 
 	// On "the way up", transform normal with transpose of inverse transform
-	if(rec.hit)
-		rec.n = glm::normalize(glm::transpose(accumMat) * rec.n);
+	if(rec.hit){
+		rec.n = mat4(glm::transpose(mat3(invtrans))) * rec.n;
+		rec.point = trans * rec.point;
+	}
 
 	return rec;
 }
