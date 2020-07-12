@@ -8,12 +8,14 @@
 
 #include <iostream>
 #include <sstream>
-using namespace std;
+#include <utility>
+#include <string>
 
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include <glm/gtx/transform.hpp>
 
+using namespace std;
 using namespace glm;
 
 
@@ -139,47 +141,49 @@ std::ostream & operator << (std::ostream & os, const SceneNode & node) {
 	return os;
 }
 
-/*
-In hierarchical ray tracing, on "the way down" you should transform the point and vector 
-forming the ray with a node's inverse transform. On "the way back up" you should transform the 
-intersection point by the original transformation, and (assuming you represent the normal as a column vector) 
-you should transform the normal with the transpose of the upper-3×3 part of the inverse transform.
-*/
 
 //---------------------------------------------------------------------------------------
-HitRecord SceneNode::hit(const Ray &r, const glm::mat4 &worldToModel) const 
+HitRecord SceneNode::hit(
+	const Ray &r,
+	double t0,
+	double t1,
+	const mat4 &worldToModel
+) const 
 {
 	HitRecord rec;
 
 	// On "the way down", transform ray by node's inverse transform
 	const mat4 accumMat = invtrans * worldToModel;
-	const Ray r_model = invtrans * r;
+	const Ray transformedRay = invtrans * r;
 
 	// GeometryNode, intersect primitive
 	if(m_nodeType == NodeType::GeometryNode){
 		const GeometryNode *geometryNode = static_cast<const GeometryNode *>(this);
-		rec = geometryNode->m_primitive->hit(r_model);
+		HitRecord record = geometryNode->m_primitive->hit(transformedRay, t0, t1);
 
 		// Node is hit, store material in hit record
-		if(rec.hit)
+		if(record.hit){
+			t1 = record.t;
+			rec = record;
 			rec.mat = geometryNode->m_material;
+		}
 	}
 
 	// Check if children are hit. If child is hit, use the closest intersection
 	for(auto child : children){
-		HitRecord childRec = child->hit(r_model, accumMat);
-		if(childRec.hit){
-			if(rec.hit == false)
-				rec = childRec;
-			else
-				rec = std::min(rec, childRec);
+		HitRecord record = child->hit(transformedRay, t0, t1, accumMat);
+		if(record.hit){
+			t1 = record.t;
+			rec = record;
 		}
 	}
 
-	// On "the way up", transform normal with transpose of inverse transform
+	// On "the way up":
+	//	* transform intersection point by node's transformation
+	//	* transform normal with 3x3 transpose of inverse transform
 	if(rec.hit){
-		rec.n = mat4(glm::transpose(mat3(invtrans))) * rec.n;
 		rec.point = trans * rec.point;
+		rec.n = mat4(glm::transpose(mat3(invtrans))) * rec.n;
 	}
 
 	return rec;

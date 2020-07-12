@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Material.hpp"
+#include "Epsilon.hpp"
 #include "Ray.hpp"
 
 #include <glm/glm.hpp>
@@ -54,7 +55,12 @@ public:
 	unsigned int m_nodeId;
 
     // Recursively check for ray-GeometryNode intersections, returning the HitRecord with the smallest t
-    HitRecord hit(const Ray &r, const glm::mat4 &worldToModel) const;
+    HitRecord hit(
+        const Ray &r,
+        double t0,
+        double t1,
+        const glm::mat4 &worldToModel = glm::mat4()
+    ) const;
 
 private:
 	// The number of SceneNode instances.

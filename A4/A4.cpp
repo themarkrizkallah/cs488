@@ -1,17 +1,25 @@
 // Spring 2020
 
-#include <glm/glm.hpp>
-#include <glm/ext.hpp>
-#include <utility>
-
 #include "Material.hpp"
 #include "PhongMaterial.hpp"
-#include "Common.hpp"
+#include "Epsilon.hpp"
 #include "A4.hpp"
+
+#include <vector>
+#include <utility>
+#include <future>
+#include <thread>
+
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
+
+// Multithreading flag
+#define ENABLE_MULTITHREADING
 
 using namespace std;
 using namespace glm;
 
+static const uint NUM_CORES = thread::hardware_concurrency();
 
 // Generate the DCS to WCS matrix (Course Notes 20.1 SI)
 mat4 generateDCStoWorldMat(
@@ -27,7 +35,7 @@ mat4 generateDCStoWorldMat(
 	const auto n_y = (double) pixelDim.second;
 
 	// "Focal" distance
-	const double d = 1;
+	const double d = 1.0;
 
 	// Aspect ratio
 	const double height = 2 * d * glm::tan(glm::radians(fovy/2));
@@ -63,12 +71,11 @@ vec3 rayColour(
 	SceneNode *node,
 	const Ray &r,
 	const int hitCount,
-	const glm::vec3 &ambient,
-	const std::list<Light *> &lights
+	const vec3 &ambient,
+	const list<Light *> &lights
 )
 {
-	vec3 col;
-	HitRecord rec = node->hit(r, mat4());
+	HitRecord rec = node->hit(r, EPSILON, INF_DOUBLE);
 
 	// Hit, compute shadow rays
 	if(rec.hit)
@@ -77,16 +84,14 @@ vec3 rayColour(
 	// No hit, use background colour
 	else
 		return BackgroundColour;
-
-	return col;
 }
 
 vec3 directColour(
 	SceneNode *node,
 	const Ray &primRay,
 	const HitRecord &primRec,
-	const glm::vec3 &ambient,
-	const std::list<Light *> &lights
+	const vec3 &ambient,
+	const list<Light *> &lights
 )
 {
 	// Material
@@ -100,21 +105,21 @@ vec3 directColour(
 	// Ambient component
 	auto col = kd * ambient;
 
-	const vec4 n = glm::normalize(primRec.n); // Intersection normal (normalized)
-	const vec4 p = primRec.point + FUDGE_FACTOR * n; // Intersection point (corrected)
-	const vec4 v = glm::normalize(primRay.origin - p);
+	const vec4 n = glm::normalize(primRec.n);          // Intersection point normal (normalized)
+	const vec4 p = primRec.point + CORRECTION * n;     // Intersection point (corrected)
+	const vec4 v = glm::normalize(primRay.origin - p); // Intersection to eye point vector
 
 	// Compute shadow rays
 	for(const auto light : lights){
 		const Ray shadowRay(p, vec4(light->position, 1));
-		const HitRecord rec = node->hit(shadowRay, mat4());
 
-		// If shadow ray not obstructed
-		if(rec.hit == false){
+		// Shade pixel if shadow ray isn't obstructed
+		HitRecord rec = node->hit(shadowRay, EPSILON, INF_DOUBLE);
+		if(!rec.hit){
 			// Blinn-Phong Shading
 			const vec3 &I = light->colour;
 
-			vec4 l = shadowRay.direction(); // Light direction
+			vec4 l = glm::normalize(shadowRay.direction()); // Light direction
 			vec4 h = glm::normalize(v + l); // Halfway vector
 
 			// Diffuse component
@@ -128,56 +133,29 @@ vec3 directColour(
 	return col;
 }
 
-void A4_Render(
-		// What to render  
-		SceneNode * root,
+static void renderChunk(
+	const uint n_y,
+	const uint xStart, const uint xEnd,
 
-		// Image to write to, set to a given width and height  
-		Image & image,
+	Image &image,
 
-		// Viewing parameters  
-		const glm::vec3 & eye,
-		const glm::vec3 & view,
-		const glm::vec3 & up,
-		double fovy,
+	SceneNode *root,
 
-		// Lighting parameters  
-		const glm::vec3 & ambient,
-		const std::list<Light *> & lights
-) {
+	const mat4 &dcsToWorld,
+	const vec4 &eye,
 
-  // Fill in raytracing code here...  
-  std::cout << "Calling A4_Render(\n" <<
-		  "\t" << *root <<
-          "\t" << "Image(width:" << image.width() << ", height:" << image.height() << ")\n"
-          "\t" << "eye:  " << glm::to_string(eye) << std::endl <<
-		  "\t" << "view: " << glm::to_string(view) << std::endl <<
-		  "\t" << "up:   " << glm::to_string(up) << std::endl <<
-		  "\t" << "fovy: " << fovy << std::endl <<
-          "\t" << "ambient: " << glm::to_string(ambient) << std::endl <<
-		  "\t" << "lights{" << std::endl;
+	const vec3 & ambient,
+	const list<Light *> & lights
 
-	for(const Light * light : lights) {
-		std::cout << "\t\t" <<  *light << std::endl;
-	}
-	std::cout << "\t}" << std::endl;
-	std:: cout <<")" << std::endl;
-
-	// Image dimensions
-	const size_t n_x = image.width();
-	const size_t n_y = image.height();
-	const auto pixelDim = std::make_pair(n_x, n_y);
-
-	const mat4 dcsToWorld = generateDCStoWorldMat(pixelDim, eye, view, up, fovy);
-
-	// Cast rays
-	for (uint x = 0; x < n_x; ++x) {
-		for (uint y = 0; y < n_y; ++y) {
-			const vec4 p_world = dcsToWorld * glm::vec4(x, y, 0, 1);
-			const Ray ray(vec4(eye, 1), p_world);
+)
+{
+	for(uint x = xStart; x < xEnd; ++x) {
+		for(uint y = 0; y < n_y; ++y){
+			const vec4 p_world = dcsToWorld * vec4(x, y, 0, 1);
+			const Ray ray(eye, p_world);
 
 			// Compute pixel colour
-			auto col = rayColour(root, ray, 0, ambient, lights);
+			const auto col = rayColour(root, ray, 0, ambient, lights);
 
 			// Red: 
 			image(x, y, Cone::R) = col[Cone::R];
@@ -187,4 +165,116 @@ void A4_Render(
 			image(x, y, Cone::B) = col[Cone::B];
 		}
 	}
+}
+
+void A4_Render(
+		// What to render  
+		SceneNode * root,
+
+		// Image to write to, set to a given width and height  
+		Image & image,
+
+		// Viewing parameters  
+		const vec3 & eye,
+		const vec3 & view,
+		const vec3 & up,
+		double fovy,
+
+		// Lighting parameters  
+		const vec3 & ambient,
+		const list<Light *> & lights
+) {
+	// Fill in raytracing code here...  
+	cout << "Calling A4_Render(\n" <<
+		  "\t" << *root <<
+          "\t" << "Image(width:" << image.width() << ", height:" << image.height() << ")\n"
+          "\t" << "eye:  " << glm::to_string(eye) << endl <<
+		  "\t" << "view: " << glm::to_string(view) << endl <<
+		  "\t" << "up:   " << glm::to_string(up) << endl <<
+		  "\t" << "fovy: " << fovy << endl <<
+		  "\t" << "n_x: " << image.width() << endl << 
+		  "\t" << "n_y: " << image.height() << endl <<
+          "\t" << "ambient: " << glm::to_string(ambient) << endl <<
+		  "\t" << "lights{" << endl;
+
+
+	for(const Light * light : lights)
+		std::cout << "\t\t" <<  *light << endl;
+
+	cout << "\t}" << endl;
+	cout <<")" << endl;
+
+	// Image dimensions
+	const size_t n_x = image.width();
+	const size_t n_y = image.height();
+	const auto pixelDim = std::make_pair(n_x, n_y);
+
+	// DCS to WCS matrix
+	const mat4 dcsToWorld = generateDCStoWorldMat(pixelDim, eye, view, up, fovy);
+
+	// Eye 4D point
+	const vec4 eye4D(eye, 1);
+
+	/* Ray Trace image */
+
+#ifdef ENABLE_MULTITHREADING
+	const uint numWorkers = NUM_CORES;
+	const uint chunkSize = std::ceil(double(n_x) / double(numWorkers));
+
+	cout << endl << "Multithreading enabled: " << endl;
+		cout << "\t " << numWorkers << "   workers" << endl;
+		cout << "\t~" << chunkSize << " columns/worker" << endl;
+
+	std::vector<std::future<void>> workers;
+	workers.reserve(numWorkers);
+
+	uint xStart = 0;
+	uint xEnd = chunkSize;
+
+	// Chunk the image and launch workers
+	for(uint chunk = 0; chunk < numWorkers; ++chunk) {
+		xStart = chunk * chunkSize;
+		xEnd = chunk < numWorkers - 1 ? xStart + chunkSize : n_x;
+
+		workers.push_back(std::async(
+			// Type
+			std::launch::async,
+
+			// Function
+			renderChunk,
+
+			// Parameters
+			n_y,
+			xStart, xEnd,
+			std::ref(image),
+			root,
+			std::ref(dcsToWorld),
+			std::ref(eye4D),
+			std::ref(ambient),
+			std::ref(lights)
+		));
+	}
+
+	// Wait for workers to finish
+	for(const auto &worker : workers)
+		worker.wait();
+
+#else
+	for (uint x = 0; x < n_x; ++x) {
+		for (uint y = 0; y < n_y; ++y) {
+			const vec4 p_world = dcsToWorld * vec4(x, y, 0, 1);
+			const Ray ray(eye4D, p_world);
+
+			// Compute pixel colour
+			const auto col = rayColour(root, ray, 0, ambient, lights);
+
+			// Red: 
+			image(x, y, Cone::R) = col[Cone::R];
+			// Green: 
+			image(x, y, Cone::G) = col[Cone::G];
+			// Blue: 
+			image(x, y, Cone::B) = col[Cone::B];
+		}
+	}
+#endif
 }
