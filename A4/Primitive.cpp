@@ -36,7 +36,7 @@ HitRecord NonhierSphere::hit(const Ray &r, double t0, double t1) const
 	double t;
 
     const vec3 e(r.origin.x, r.origin.y, r.origin.z);
-    const vec3 d(r.direction());
+    const vec3 d(r.direction);
     const vec3 centreDir = e - m_pos;
 
     // Quadratic formula parameters
@@ -69,6 +69,10 @@ NonhierBox::NonhierBox(const glm::vec3& pos, double size)
     : m_pos(pos), m_size(size)
 {}
 
+NonhierBox::NonhierBox(const glm::vec3& pos, glm::vec3 size)
+    : m_pos(pos), m_size(size)
+{}
+
 NonhierBox::~NonhierBox()
 {}
 
@@ -78,14 +82,15 @@ HitRecord NonhierBox::hit(const Ray &r, double t0, double t1) const
 	double t;
 	vec4 normal;
 
-    const vec4 rayDirection = r.direction();
+	// Inverse ray direction here and then multiply moving forward
+    const vec4 rayDirection = 1.0f / r.direction;
 
 	const auto closeCorner = m_pos;
-	const auto farCorner = m_pos + glm::vec3(m_size);
+	const auto farCorner = m_pos + m_size;
 
 	// Solve for t using the x-interval
-	double tMin = (closeCorner.x - r.origin.x) / rayDirection.x;
-	double tMax = (farCorner.x - r.origin.x) / rayDirection.x;
+	double tMin = (closeCorner.x - r.origin.x) * rayDirection.x;
+	double tMax = (farCorner.x - r.origin.x) * rayDirection.x;
 
     // Left and right face normals
 	vec4 closeNormal(-1, 0, 0, 0);
@@ -98,8 +103,8 @@ HitRecord NonhierBox::hit(const Ray &r, double t0, double t1) const
 	}
 
 	// Solve for t using the y-interval
-	double y_tMin = (closeCorner.y - r.origin.y) / rayDirection.y;
-	double y_tMax = (farCorner.y - r.origin.y) / rayDirection.y;
+	double y_tMin = (closeCorner.y - r.origin.y) * rayDirection.y;
+	double y_tMax = (farCorner.y - r.origin.y) * rayDirection.y;
 
     // Down and up face normals
 	vec4 y_closeNormal(0, -1, 0, 0);
@@ -130,8 +135,8 @@ HitRecord NonhierBox::hit(const Ray &r, double t0, double t1) const
 	}
 
 	// Solve for t using the Z-interval
-	double z_tMin = (closeCorner.z - r.origin.z) / rayDirection.z;
-	double z_tMax = (farCorner.z -  r.origin.z) / rayDirection.z;
+	double z_tMin = (closeCorner.z - r.origin.z) * rayDirection.z;
+	double z_tMax = (farCorner.z -  r.origin.z) * rayDirection.z;
 
     // Back and front face normals
 	vec4 z_closeNormal(0, 0, -1, 0);
@@ -189,31 +194,26 @@ HitRecord NonhierBox::hit(const Ray &r, double t0, double t1) const
 // ------------------------------------------------------------
 // Sphere
 Sphere::Sphere()
-	: m_sphere(new NonhierSphere(vec3(0), 1))
+	: m_sphere()
 {}
 
 Sphere::~Sphere()
-{
-	delete m_sphere;
-}
+{}
 
 HitRecord Sphere::hit(const Ray &r, double t0, double t1) const
 {
-    return m_sphere->hit(r, t0, t1);
+    return m_sphere.hit(r, t0, t1);
 }
 
 // ------------------------------------------------------------
 // Cube
-Cube::Cube()
-	: m_box(new NonhierBox(vec3(0), 1))
+Cube::Cube(): m_box()
 {}
 
 Cube::~Cube()
-{
-	delete m_box;
-}
+{}
 
 HitRecord Cube::hit(const Ray &r, double t0, double t1) const
 {
-    return m_box->hit(r, t0, t1);
+    return m_box.hit(r, t0, t1);
 }

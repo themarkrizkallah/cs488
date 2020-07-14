@@ -1,16 +1,16 @@
 // Spring 2020
 
-#include <iostream>
-#include <fstream>
-#include <algorithm>
-#include <utility>
-
-#include <glm/ext.hpp>
-
 // #include "cs488-framework/ObjFileDecoder.hpp"
+#include "Options.hpp"
 #include "Epsilon.hpp"
 #include "Ray.hpp"
 #include "Mesh.hpp"
+
+#include <iostream>
+#include <fstream>
+#include <memory>
+
+#include <glm/ext.hpp>
 
 using namespace std;
 using namespace glm;
@@ -26,7 +26,7 @@ HitRecord Triangle::hit(const Ray &r, double t0, double t1, const vec3 *verts) c
 	const auto &v3 = verts[2];
 
 	// Column 3 of A, [g, h, i]^T
-	const auto direction = r.direction();
+	const auto direction = r.direction;
 	const double g = direction.x;
 	const double h = direction.y;
 	const double i = direction.z;
@@ -54,21 +54,21 @@ HitRecord Triangle::hit(const Ray &r, double t0, double t1, const vec3 *verts) c
 	const double jc_minus_al = (j * c) - (a * l);
 	const double bl_minus_kc = (b * l) - (k * c);
 
-	// Compute M
-	const double M = (a * ei_minus_hf) + (b * gf_minus_di) + (c * dh_minus_eg);
+	// Compute M, invert it here and then multiply moving forward
+	const double M = 1.0 / ((a * ei_minus_hf) + (b * gf_minus_di) + (c * dh_minus_eg));
 
 	// Compute t and verify that it is in bounds
-	double t = - ((f * ak_minus_jb) + (e * jc_minus_al) + (d * bl_minus_kc)) / M;
+	double t = - ((f * ak_minus_jb) + (e * jc_minus_al) + (d * bl_minus_kc)) * M;
 	if(t <= t0 || t >= t1 || t >= rec.t)
 		return rec;
 
 	// Compute gamma and verify that it is in bounds
-	double gamma = ((i * ak_minus_jb) + (h * jc_minus_al) + (g * bl_minus_kc)) / M;
+	double gamma = ((i * ak_minus_jb) + (h * jc_minus_al) + (g * bl_minus_kc)) * M;
 	if(gamma < EPSILON || gamma > 1.0)
 		return rec;
 
 	// Compute Beta and verify that it is in bounds
-	double beta = ((j * ei_minus_hf) + (k * gf_minus_di) + (l * dh_minus_eg)) / M;
+	double beta = ((j * ei_minus_hf) + (k * gf_minus_di) + (l * dh_minus_eg)) * M;
 	if(beta < EPSILON || beta > 1.0 - gamma)
 		return rec;
 
@@ -83,9 +83,13 @@ HitRecord Triangle::hit(const Ray &r, double t0, double t1, const vec3 *verts) c
 
 // ------------------------------------------------------------
 // Mesh
-Mesh::Mesh(const string &fname )
-	: m_vertices(),
+Mesh::Mesh(const string &fname)
+	: m_vertices(), 
 	  m_faces()
+#ifdef ENABLE_BOUNDING_VOLUMES
+	  ,m_boundingMin(INF_FLOAT), 
+	  m_boundingMax(-INF_FLOAT)
+#endif
 {
 	string code;
 	double vx, vy, vz;
@@ -98,19 +102,71 @@ Mesh::Mesh(const string &fname )
 			ifs >> vx >> vy >> vz;
 			m_vertices.emplace_back(vx, vy, vz);
 
+#ifdef ENABLE_BOUNDING_VOLUMES
+			// Find min and max points
+			if(vx < m_boundingMin.x) m_boundingMin.x = vx;
+			if(vx > m_boundingMax.x) m_boundingMax.x = vx;
+
+			if(vy < m_boundingMin.y) m_boundingMin.y = vy;
+			if(vy > m_boundingMax.y) m_boundingMax.y = vy;
+
+			if(vz < m_boundingMin.z) m_boundingMin.z = vz;
+			if(vz > m_boundingMax.z) m_boundingMax.z = vz;
+#endif
+
 		} else if(code == "f") {
 			ifs >> s1 >> s2 >> s3;
 			m_faces.emplace_back(s1 - 1, s2 - 1, s3 - 1);
 		}
 	}
+
+#ifdef ENABLE_BOUNDING_VOLUMES
+	// Generate bounding volume
+	m_bv = unique_ptr<Primitive>(boundingVolume(BOUNDING_VOLUME));
+#endif
 }
+
+#ifdef ENABLE_BOUNDING_VOLUMES
+Primitive *Mesh::boundingVolume(BoundingVolume volType) const
+{
+	Primitive *volume;
+
+	switch(volType){
+		// Generate a bounding sphere
+		case BoundingVolume::BoundingSphere:
+			volume = new NonhierSphere(
+				(m_boundingMax + m_boundingMin) * 0.5f, 
+				glm::length(m_boundingMax - m_boundingMin) * 0.5f
+			);
+			break;
+
+		// (Default) Generate a bounding box
+		case BoundingVolume::BoundingBox:
+		default:
+			volume = new NonhierBox(m_boundingMin, m_boundingMax - m_boundingMin);;
+			break;
+	}
+	
+	return volume;
+}
+#endif
 
 HitRecord Mesh::hit(const Ray &r, double t0, double t1) const
 {
 	HitRecord rec;
 
+#ifdef ENABLE_BOUNDING_VOLUMES
+	// Check intersection with bounding volume (and possibly render it)
+	#ifdef RENDER_BOUNDING_VOLUMES
+		return m_bv->hit(r, t0, t1);
+	#else
+		if(!m_bv->hit(r, t0, t1))
+			return rec;
+	#endif
+#endif
+	const auto &direction = r.direction;
+
 	// Column 3 of A, [g, h, i]^T
-	const auto direction = r.direction();
 	const double g = direction.x;
 	const double h = direction.y;
 	const double i = direction.z;

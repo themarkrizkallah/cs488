@@ -11,7 +11,10 @@
 #include "Image.hpp"
 
 const int MAX_HITS = 100;
-const glm::vec3 BackgroundColour(0.529f, 0.808f, 0.922f);
+
+
+const glm::vec3 ZenithColour(0.0f, 0.0f, 0.35f);
+const glm::vec3 DuskColour(0.902f, 0.514f, 0.071f);
 
 enum Cone {
 	R,

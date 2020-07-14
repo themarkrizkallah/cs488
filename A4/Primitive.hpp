@@ -19,7 +19,7 @@ public:
 // Non-hierarchal Sphere
 class NonhierSphere : public Primitive {
 public:
-  NonhierSphere(const glm::vec3& pos, double radius);
+  NonhierSphere(const glm::vec3& pos = glm::vec3(0), double radius = 1.0);
   virtual ~NonhierSphere();
 
   virtual HitRecord hit(const Ray &r, double t0, double t1) const override;
@@ -33,14 +33,16 @@ private:
 // Non-hierarchal Box
 class NonhierBox : public Primitive {
 public:
-  NonhierBox(const glm::vec3& pos, double size);  
+  NonhierBox(const glm::vec3& pos = glm::vec3(0), double size = 1.0);  
+  NonhierBox(const glm::vec3& pos, glm::vec3 size);  
   virtual ~NonhierBox();
 
   virtual HitRecord hit(const Ray &r, double t0, double t1) const override;
 
 private:
   glm::vec3 m_pos;
-  double m_size;
+  glm::vec3 m_size;
+  // double m_size;
 };
 
 // ------------------------------------------------------------
@@ -53,7 +55,7 @@ public:
   virtual HitRecord hit(const Ray &r, double t0, double t1) const override;
 
 private:
-  NonhierSphere *m_sphere;
+  NonhierSphere m_sphere;
 };
 
 // ------------------------------------------------------------
@@ -66,5 +68,5 @@ public:
   virtual HitRecord hit(const Ray &r, double t0, double t1) const override;
 
 private:
-  NonhierBox *m_box;
+  NonhierBox m_box;
 };

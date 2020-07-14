@@ -9,18 +9,18 @@ using namespace glm;
 
 // ------------------------------------------------------------
 // Ray
-Ray::Ray(const vec4 &origin, const vec4 &dest)
-    : origin(origin), dest(dest)
+Ray::Ray(const vec4 &origin, const vec4 &direction)
+    : origin(origin), direction(direction)
 {}
 
 // Copy Constructor
 Ray::Ray(const Ray &other)
-    : origin(other.origin), dest(other.dest)
+    : origin(other.origin), direction(other.direction)
 {}
 
 // Move Constructor
 Ray::Ray(Ray &&other)
-    : origin(std::move(other.origin)), dest(std::move(other.dest))
+    : origin(std::move(other.origin)), direction(std::move(other.direction))
 {}
 
 // Copy assignment
@@ -28,7 +28,7 @@ Ray &Ray::operator=(const Ray &other)
 {
     if(this != &other){
         origin = other.origin;
-        dest = other.dest;
+        direction = other.direction;
     }
 
     return *this;
@@ -38,26 +38,20 @@ Ray &Ray::operator=(const Ray &other)
 Ray &Ray::operator=(Ray &&other)
 {
     origin = std::move(other.origin);
-    dest = std::move(other.dest);
+    direction = std::move(other.direction);
 
     return *this;
-}
-
-// Compute ray direction, dest - origin
-vec4 Ray::direction() const{
-    // return glm::normalize(dest - origin);
-    return dest - origin;
 }
 
 // Compute point on the ray using p(t) = e + td 
 vec4 Ray::pointAt(float t) const
 {
-    return origin + t * direction();;
+    return origin + t * direction;
 }
 
 Ray operator*(const mat4 &M, const Ray& r)
 {
-    return Ray(M * r.origin, M * r.dest);
+    return Ray(M * r.origin, M * r.direction);
 }
 
 
@@ -79,6 +73,11 @@ HitRecord &HitRecord::operator=(const HitRecord &other)
     }
 
     return *this;
+}
+
+HitRecord::operator bool() const
+{
+    return hit;
 }
 
 // Comparison operators

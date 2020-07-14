@@ -2,18 +2,15 @@
 
 #pragma once
 
+#include "Options.hpp"
+#include "Primitive.hpp"
+
 #include <vector>
 #include <iosfwd>
 #include <string>
+#include <memory>
 
 #include <glm/glm.hpp>
-
-#include "Primitive.hpp"
-
-// Use this #define to selectively compile your code to render the
-// bounding boxes around your mesh objects. Uncomment this option
-// to turn it on.
-//#define RENDER_BOUNDING_VOLUMES
 
 struct Triangle
 {
@@ -40,6 +37,14 @@ public:
 private:
 	std::vector<glm::vec3> m_vertices;
 	std::vector<Triangle> m_faces;
+
+#ifdef ENABLE_BOUNDING_VOLUMES
+	glm::vec3 m_boundingMin;
+	glm::vec3 m_boundingMax;
+	std::unique_ptr<Primitive> m_bv; // bounding volume
+
+	Primitive *boundingVolume(BoundingVolume volType = BoundingVolume::BoundingBox) const;
+#endif
 
     friend std::ostream& operator<<(std::ostream& out, const Mesh& mesh);
 };

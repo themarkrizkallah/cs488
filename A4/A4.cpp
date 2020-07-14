@@ -1,25 +1,77 @@
 // Spring 2020
 
+#include "Options.hpp"
+#include "Epsilon.hpp"
 #include "Material.hpp"
 #include "PhongMaterial.hpp"
-#include "Epsilon.hpp"
+#include "Timer.hpp"
 #include "A4.hpp"
 
+#include <iostream>
+#include <iomanip>
+#include <chrono>
+#include <string>
 #include <vector>
 #include <utility>
 #include <future>
 #include <thread>
+#include <mutex>
 
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
-// Multithreading flag
-#define ENABLE_MULTITHREADING
-
 using namespace std;
 using namespace glm;
 
-static const uint NUM_CORES = thread::hardware_concurrency();
+
+#ifdef ENABLE_MULTITHREADING
+static mutex ioMutex;
+static const uint CONCURRENCY = thread::hardware_concurrency();
+#endif
+
+// Convenience function that prints Options.hpp settings
+static void printRenderingOptions()
+{
+
+#ifdef ENABLE_MULTITHREADING
+	cout << "Multithreading enabled" << endl;
+#else
+	cout << "Multithreading disabled. " << endl;
+#endif
+
+#ifdef ENABLE_BOUNDING_VOLUMES
+	string boundingVolumeNames[2] = {
+		"Bounding Box",
+		"Bounding Sphere"
+	};
+
+	cout << "Bounding volume acceleration enabled (" << boundingVolumeNames[BOUNDING_VOLUME] << ")" << endl;
+	#ifdef ENABLE_BOUNDING_VOLUMES
+		cout << "Rendering bounding volumes" << endl;
+	#endif
+#else
+	cout << "Bounding volume acceleration disabled" << endl;
+#endif
+}
+
+// Safely increments the number of pixels rendered and updates the progress indicator
+#ifdef SHOW_PROGRESS
+static void updateProgress(
+	const pair<size_t, size_t> &pixelDim,
+	uint &pixelsRendered,
+	const uint increment
+)
+{
+#ifdef ENABLE_MULTITHREADING
+	std::lock_guard<std::mutex> lock(ioMutex);
+#endif
+
+	pixelsRendered += increment;
+	cout << "\r" << std::fixed << std::setprecision(2)
+		 << float(pixelsRendered) / (pixelDim.first * pixelDim.second) * 100.0f 
+		 << "% done" << std::flush;
+}
+#endif
 
 // Generate the DCS to WCS matrix (Course Notes 20.1 SI)
 mat4 generateDCStoWorldMat(
@@ -42,7 +94,7 @@ mat4 generateDCStoWorldMat(
 	const double width = (n_x / n_y) * height;
 
 	// Step 1: Create translation matrix T1
-	mat4 T1 = glm::translate(vec3(-n_x/2.0, -n_y/2.0, d));
+	mat4 T1 = glm::translate(vec3(-n_x * 0.5, -n_y * 0.5, d));
 
 	// Step 2: Preserve the aspect ratio and change x-axis direction using S2
 	// Note: Pixel y values grow towards the bottom, reverse y
@@ -82,8 +134,10 @@ vec3 rayColour(
 		return directColour(node, r, rec, ambient, lights);	
 
 	// No hit, use background colour
-	else
-		return BackgroundColour;
+	else{
+		const float t = 0.7f*(glm::normalize(r.direction).y + 1.0f);
+		return vec3(1.0f-t) * DuskColour + t * ZenithColour;
+	}
 }
 
 vec3 directColour(
@@ -103,7 +157,7 @@ vec3 directColour(
 	const auto &ke = mat->shininess();
 
 	// Ambient component
-	auto col = kd * ambient;
+	vec3 col = kd * ambient;
 
 	const vec4 n = glm::normalize(primRec.n);          // Intersection point normal (normalized)
 	const vec4 p = primRec.point + CORRECTION * n;     // Intersection point (corrected)
@@ -111,7 +165,7 @@ vec3 directColour(
 
 	// Compute shadow rays
 	for(const auto light : lights){
-		const Ray shadowRay(p, vec4(light->position, 1));
+		const Ray shadowRay(p, vec4(light->position, 1) - p);
 
 		// Shade pixel if shadow ray isn't obstructed
 		HitRecord rec = node->hit(shadowRay, EPSILON, INF_DOUBLE);
@@ -119,7 +173,7 @@ vec3 directColour(
 			// Blinn-Phong Shading
 			const vec3 &I = light->colour;
 
-			vec4 l = glm::normalize(shadowRay.direction()); // Light direction
+			vec4 l = glm::normalize(shadowRay.direction); // Light direction
 			vec4 h = glm::normalize(v + l); // Halfway vector
 
 			// Diffuse component
@@ -134,7 +188,7 @@ vec3 directColour(
 }
 
 static void renderChunk(
-	const uint n_y,
+	const pair<size_t, size_t> &pixelDim,
 	const uint xStart, const uint xEnd,
 
 	Image &image,
@@ -145,14 +199,17 @@ static void renderChunk(
 	const vec4 &eye,
 
 	const vec3 & ambient,
-	const list<Light *> & lights
+	const list<Light *> & lights,
 
+	uint &pixelsRendered
 )
 {
+	const uint n_y = pixelDim.second;
+
 	for(uint x = xStart; x < xEnd; ++x) {
 		for(uint y = 0; y < n_y; ++y){
 			const vec4 p_world = dcsToWorld * vec4(x, y, 0, 1);
-			const Ray ray(eye, p_world);
+			const Ray ray(eye, p_world - eye);
 
 			// Compute pixel colour
 			const auto col = rayColour(root, ray, 0, ambient, lights);
@@ -164,6 +221,10 @@ static void renderChunk(
 			// Blue: 
 			image(x, y, Cone::B) = col[Cone::B];
 		}
+
+#ifdef SHOW_PROGRESS
+		updateProgress(pixelDim, pixelsRendered, n_y);
+#endif
 	}
 }
 
@@ -202,7 +263,7 @@ void A4_Render(
 		std::cout << "\t\t" <<  *light << endl;
 
 	cout << "\t}" << endl;
-	cout <<")" << endl;
+	cout <<")" << endl << endl;
 
 	// Image dimensions
 	const size_t n_x = image.width();
@@ -216,65 +277,56 @@ void A4_Render(
 	const vec4 eye4D(eye, 1);
 
 	/* Ray Trace image */
+	printRenderingOptions();
+
+	// Start rendering!
+	{
+		Timer timer;
+
+		uint pixelsRendered = 0;
 
 #ifdef ENABLE_MULTITHREADING
-	const uint numWorkers = NUM_CORES;
-	const uint chunkSize = std::ceil(double(n_x) / double(numWorkers));
+		const uint numWorkers = CONCURRENCY;
+		const uint chunkSize = 1 + ((n_x - 1) / numWorkers);
 
-	cout << endl << "Multithreading enabled: " << endl;
-		cout << "\t " << numWorkers << "   workers" << endl;
-		cout << "\t~" << chunkSize << " columns/worker" << endl;
+		cout << endl << "Multithreading settings: " << endl;
+			cout << "\t" << numWorkers << " workers" << endl;
+			cout << "\t~" << chunkSize << " columns/worker" << endl;
 
-	std::vector<std::future<void>> workers;
-	workers.reserve(numWorkers);
+		std::vector<std::future<void>> workers;
+		workers.reserve(numWorkers);
 
-	uint xStart = 0;
-	uint xEnd = chunkSize;
+		uint xStart = 0;
+		uint xEnd = chunkSize;
 
-	// Chunk the image and launch workers
-	for(uint chunk = 0; chunk < numWorkers; ++chunk) {
-		xStart = chunk * chunkSize;
-		xEnd = chunk < numWorkers - 1 ? xStart + chunkSize : n_x;
+		// Chunk the image and launch workers
+		for(uint chunk = 0; chunk < numWorkers; ++chunk) {
+			xStart = chunk * chunkSize;
+			xEnd = chunk < numWorkers - 1 ? xStart + chunkSize : n_x;
 
-		workers.push_back(std::async(
-			// Type
-			std::launch::async,
+			workers.push_back(std::async(
+				// Type
+				std::launch::async,
 
-			// Function
-			renderChunk,
+				// Function
+				renderChunk,
 
-			// Parameters
-			n_y,
-			xStart, xEnd,
-			std::ref(image),
-			root,
-			std::ref(dcsToWorld),
-			std::ref(eye4D),
-			std::ref(ambient),
-			std::ref(lights)
-		));
-	}
-
-	// Wait for workers to finish
-	for(const auto &worker : workers)
-		worker.wait();
+				// Parameters
+				std::ref(pixelDim),
+				xStart, xEnd,
+				std::ref(image),
+				root,
+				std::ref(dcsToWorld),
+				std::ref(eye4D),
+				std::ref(ambient),
+				std::ref(lights),
+				std::ref(pixelsRendered)
+			));
+		}
 
 #else
-	for (uint x = 0; x < n_x; ++x) {
-		for (uint y = 0; y < n_y; ++y) {
-			const vec4 p_world = dcsToWorld * vec4(x, y, 0, 1);
-			const Ray ray(eye4D, p_world);
-
-			// Compute pixel colour
-			const auto col = rayColour(root, ray, 0, ambient, lights);
-
-			// Red: 
-			image(x, y, Cone::R) = col[Cone::R];
-			// Green: 
-			image(x, y, Cone::G) = col[Cone::G];
-			// Blue: 
-			image(x, y, Cone::B) = col[Cone::B];
-		}
-	}
+		for(uint x = 0; x < n_x; ++x)
+			renderChunk(pixelDim, x, x+1, image, root, dcsToWorld, eye4D, ambient, lights, pixelsRendered);
 #endif
+	}
 }

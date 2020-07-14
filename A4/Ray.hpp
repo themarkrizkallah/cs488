@@ -6,17 +6,17 @@
 #include <limits>
 
 struct Ray {
-    Ray(const glm::vec4 &origin = glm::vec4(0,0,0,1), const glm::vec4 &dest = glm::vec4(0,0,0,1));
+    Ray(const glm::vec4 &origin = glm::vec4(0,0,0,1), const glm::vec4 &direction = glm::vec4(0));
     Ray(const Ray &other);
     Ray(Ray &&other);
 
     Ray &operator=(const Ray &other);
     Ray &operator=(Ray &&other);
 
-    glm::vec4 origin; // Ray origin (e) (point)
-    glm::vec4 dest;   // Ray "destination" (point)
+    glm::vec4 origin;    // Ray origin
+    glm::vec4 direction; // Ray direction
 
-    glm::vec4 direction() const;
+    // glm::vec4 direction() const;
     glm::vec4 pointAt(float t) const;
 };
 Ray operator*(const glm::mat4 &M, const Ray& r);
@@ -37,6 +37,8 @@ struct HitRecord {
     glm::vec4 n;     // Intersection normal
     glm::vec4 point; // Intersection point
     Material *mat;   // Material of hit object
+
+    explicit operator bool() const;
 
     bool operator<(const HitRecord &other) const;
     bool operator<=(const HitRecord &other) const;
