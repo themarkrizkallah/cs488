@@ -207,7 +207,7 @@ function drawWaist()
     waistNode:translate(0, -0.25, 0)
     torsoNode:add_child(waistNode)
 
-    ---- Wait joint ----
+    ---- Waist joint ----
     waistJoint = gr.joint('waistJoint', {-35, 0, 5}, {0, 0, 0})
     waistNode:add_child(waistJoint)
 
@@ -301,11 +301,12 @@ function drawLeg(side)
     ---- Hip Node ----
     hipNode = gr.node(side .. "HipNode")
     hipNode:translate(x*0.23, -0.45, 0)
-    hipNode:rotate('y', x*10)
+    hipNode:rotate('z', x*20)
+    hipNode:rotate('x', x*-10);
     waistJoint:add_child(hipNode)
 
     ---- Hip Joint ----
-    hipJoint = gr.joint(side .. 'HipJoint', {-60, -10, 60}, {0, 0, 0})
+    hipJoint = gr.joint(side .. 'HipJoint', {-60, -60, 60}, {0, 0, 0})
     hipNode:add_child(hipJoint)
     
     ---- Hip Geometry (Representing Joint) ----
@@ -385,7 +386,7 @@ hide = gr.material({0.84, 0.6, 0.53}, {0.3, 0.3, 0.3}, 20)
 stone = gr.material({0.8, 0.7, 0.7}, {0.0, 0.0, 0.0}, 0)
 -- moon
 
-eye = {0, 0, 10}
+eye = {0, 0, 8}
 view = {0, 0, -30}
 up = {0, 1, 0}
 fov = 50
@@ -434,12 +435,13 @@ for i = 1, 6 do
 
 ------------------- Puppet -------------------
 torsoNode = gr.node('puppet')
+torsoNode:translate(0, 0.7, 0)
 scene:add_child(torsoNode)
 drawPuppet()
 
 ------------------- Cow -------------------
 cow_node = gr.node('cowNode')
-cow_node:translate(2, 1, -2)
+cow_node:translate(0, 1, -2)
 scene:add_child(cow_node)
 
 factor = 2.0/(2.76+3.637)
@@ -458,6 +460,6 @@ plane:translate(0, -0.0545, 0)
 plane:scale(30, 30, 30)
 
 gr.render(scene,
-	  'sample.png', 512, 512,
+	  'sample-new.png', 512, 512,
 	  eye, view, up, fov,
 	  {0.4, 0.4, 0.4}, {mainLight})
