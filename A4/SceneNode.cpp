@@ -166,6 +166,7 @@ HitRecord SceneNode::hit(
 			t1 = record.t;
 			rec = record;
 			rec.mat = geometryNode->m_material;
+			rec.name = &m_name;
 		}
 	}
 

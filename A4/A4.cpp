@@ -52,6 +52,14 @@ static void printRenderingOptions()
 #else
 	cout << "Bounding volume acceleration disabled" << endl;
 #endif
+
+#ifdef ENABLE_SUPERSAMPLING
+	cout << "Supersampling enabled" << endl;
+#endif
+
+#ifdef ENABLE_REFLECTIONS
+	cout << "Reflections enabled" << endl;
+#endif
 }
 
 // Safely increments the number of pixels rendered and updates the progress indicator
@@ -122,16 +130,16 @@ mat4 generateDCStoWorldMat(
 vec3 rayColour(
 	SceneNode *node,
 	const Ray &r,
-	const int hitCount,
 	const vec3 &ambient,
-	const list<Light *> &lights
+	const list<Light *> &lights,
+	const uint hitsLeft
 )
 {
 	HitRecord rec = node->hit(r, EPSILON, INF_DOUBLE);
 
 	// Hit, compute shadow rays
 	if(rec.hit)
-		return directColour(node, r, rec, ambient, lights);	
+		return directColour(node, r, rec, ambient, lights, hitsLeft);	
 
 	// No hit, use background colour
 	else{
@@ -145,7 +153,8 @@ vec3 directColour(
 	const Ray &primRay,
 	const HitRecord &primRec,
 	const vec3 &ambient,
-	const list<Light *> &lights
+	const list<Light *> &lights,
+	const uint hitsLeft
 )
 {
 	// Material
@@ -159,6 +168,7 @@ vec3 directColour(
 	// Ambient component
 	vec3 col = kd * ambient;
 
+	const vec4 &d = primRay.direction;                 // Primary ray direction
 	const vec4 n = glm::normalize(primRec.n);          // Intersection point normal (normalized)
 	const vec4 p = primRec.point + CORRECTION * n;     // Intersection point (corrected)
 	const vec4 v = glm::normalize(primRay.origin - p); // Intersection to eye point vector
@@ -172,17 +182,32 @@ vec3 directColour(
 		if(!rec.hit){
 			// Blinn-Phong Shading
 			const vec3 &I = light->colour;
+			const double *falloff = light->falloff;
 
 			vec4 l = glm::normalize(shadowRay.direction); // Light direction
-			vec4 h = glm::normalize(v + l); // Halfway vector
+			vec4 h = glm::normalize(v + l);               // Halfway vector
+
+			double shadowRayLen = glm::length(shadowRay.direction);
+			double attenuation = 1.0 / (falloff[0] + falloff[1] * shadowRayLen + falloff[2] * shadowRayLen * shadowRayLen);
 
 			// Diffuse component
-			col += kd * I * std::max(0.0f, glm::dot(n, l));
+			col += kd * I * std::max(0.0f, glm::dot(n, l)) * attenuation;
 
 			// Specular component
-			col += ks * I * std::pow(std::max(0.0f, glm::dot(n, h)), ke);
+			col += ks * I * std::pow(std::max(0.0f, glm::dot(n, h)), ke) * attenuation;
 		}
 	}
+
+	// Reflect light off of anything except the ground plane
+	// Note: Check for ground plane is hacky
+#ifdef ENABLE_REFLECTIONS
+	if(hitsLeft > 0 && *primRec.name != "plane"){
+		const auto r = glm::reflect(d, n); // Reflection direction
+		const Ray reflectedRay(p, r);
+		const vec3 reflectionCol = rayColour(node, reflectedRay, ambient, lights, hitsLeft-1);
+		col = glm::mix(col, reflectionCol, REFLECTION_MIX_FACTOR);
+	}
+#endif
 
 	return col;
 }
@@ -208,11 +233,31 @@ static void renderChunk(
 
 	for(uint x = xStart; x < xEnd; ++x) {
 		for(uint y = 0; y < n_y; ++y){
-			const vec4 p_world = dcsToWorld * vec4(x, y, 0, 1);
-			const Ray ray(eye, p_world - eye);
+			vec3 col(0.0f);                // Pixel colour
+			vec4 p_dcs = vec4(x, y, 0, 1); // Pixel position (DCS)
 
-			// Compute pixel colour
-			const auto col = rayColour(root, ray, 0, ambient, lights);
+		// Supersample
+#ifdef ENABLE_SUPERSAMPLING
+			double SS_INV = 1.0 / SS_FACTOR;
+
+			for(uint u = 0; u < SS_FACTOR; ++u){
+				for(uint v = 0; v < SS_FACTOR; ++v){
+					p_dcs.x = x + double(u) * SS_INV;
+					p_dcs.y = y + double(v) * SS_INV;
+#endif
+					const vec4 p_world = dcsToWorld * p_dcs; // Pixel position (WCS)
+					const Ray ray(eye, p_world - eye);
+
+					// Compute pixel colour
+					col += rayColour(root, ray, ambient, lights, MAX_HITS);
+
+#ifdef ENABLE_SUPERSAMPLING
+				}
+			}
+
+			// Average sampled pixel colours
+			col *= SS_INV * SS_INV;
+#endif
 
 			// Red: 
 			image(x, y, Cone::R) = col[Cone::R];

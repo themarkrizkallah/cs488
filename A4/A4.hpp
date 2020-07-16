@@ -5,12 +5,11 @@
 #include <glm/glm.hpp>
 #include <limits>
 
+#include "Options.hpp"
 #include "SceneNode.hpp"
 #include "Light.hpp"
 #include "Ray.hpp"
 #include "Image.hpp"
-
-const int MAX_HITS = 100;
 
 
 const glm::vec3 ZenithColour(0.0f, 0.0f, 0.35f);
@@ -21,6 +20,10 @@ enum Cone {
 	G,
 	B
 };
+
+#ifndef MAX_HITS
+const uint MAX_HITS = 1;
+#endif
 
 glm::mat4 generateDCStoWorldMat(
 	// Pixel dimensions, (n_x, n_y)
@@ -36,9 +39,9 @@ glm::mat4 generateDCStoWorldMat(
 glm::vec3 rayColour(
 	SceneNode *node, 
 	const Ray &r, 
-	const int hitCount,
 	const glm::vec3 &ambient,
-	const std::list<Light *> &lights
+	const std::list<Light *> &lights,
+	const uint hitsLeft = MAX_HITS
 );
 
 glm::vec3 directColour(
@@ -46,7 +49,8 @@ glm::vec3 directColour(
 	const Ray &primRay,
 	const HitRecord &primRec,
 	const glm::vec3 &ambient,
-	const std::list<Light *> &lights
+	const std::list<Light *> &lights,
+	const uint hitsLeft = MAX_HITS
 );
 
 void A4_Render(

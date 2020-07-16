@@ -7,6 +7,8 @@
 // Comment this #define to disable multithreading
 #define ENABLE_MULTITHREADING
 
+/** Bounding Volumes **/
+
 // Comment this #define to disable bounding volume acceleration
 #define ENABLE_BOUNDING_VOLUMES
 
@@ -20,5 +22,26 @@ enum BoundingVolume {
 	BoundingSphere
 };
 
-// Default bounding volume is a bounding box
+// Default bounding volume is a bounding box (do not comment this out)
 #define BOUNDING_VOLUME BoundingBox
+
+
+/** Supersampling (Main Additional Feature)**/
+// Comment this #define to enable Supersampling
+// #define ENABLE_SUPERSAMPLING
+
+// Super sampling factor
+#ifdef ENABLE_SUPERSAMPLING
+#define SS_FACTOR 3.0
+#endif
+
+/** Reflection (BONUS) **/
+
+// Uncomment this #define to enable reflections
+// #define ENABLE_REFLECTIONS
+
+#ifdef ENABLE_REFLECTIONS
+// Comment this to use the default MAX_HITS in A4.hpp (1)
+#define MAX_HITS 5
+#define REFLECTION_MIX_FACTOR 0.25
+#endif

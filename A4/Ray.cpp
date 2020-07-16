@@ -1,10 +1,12 @@
 #include "Ray.hpp"
 #include "Epsilon.hpp"
 
+#include <string>
 #include <memory>
 #include <iostream>
 #include <glm/glm.hpp>
 
+using namespace std;
 using namespace glm;
 
 // ------------------------------------------------------------
@@ -57,8 +59,20 @@ Ray operator*(const mat4 &M, const Ray& r)
 
 // ------------------------------------------------------------
 // HitRecord
-HitRecord::HitRecord(bool hit, double t, const vec4 &n, const vec4 &point, Material *mat)
-    : hit(hit), t(t), n(n), point(point), mat(mat)
+HitRecord::HitRecord(
+    bool hit, 
+    double t, 
+    const vec4 &n, 
+    const vec4 &point, 
+    Material *mat,
+    string const *name
+)
+    : hit(hit), 
+      t(t), 
+      n(n), 
+      point(point), 
+      mat(mat),
+      name(name)
 {}
 
 // Copy assignment
@@ -70,6 +84,7 @@ HitRecord &HitRecord::operator=(const HitRecord &other)
         n = other.n;
         point = other.point;
         mat = other.mat;
+        name = other.name;
     }
 
     return *this;
