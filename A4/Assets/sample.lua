@@ -1,3 +1,8 @@
+-- #############################################
+-- Saddle your horses because tonight, WE RIDE!
+-- #############################################
+
+
 function centerCube(node)
     node:translate(-0.5, -0.5, -0.5)
 end
@@ -400,7 +405,7 @@ scene:translate(0, 0, -2)
 scene:rotate('X', 5)
 scene:rotate('Y', 40)
 
-------------------- The Arch -------------------
+------------------- Arches -------------------
 
 inst = gr.node('inst')
 
@@ -439,7 +444,7 @@ torsoNode:translate(0, 0.7, 0)
 scene:add_child(torsoNode)
 drawPuppet()
 
-------------------- Cow -------------------
+------------------- Trusty Steed -------------------
 cow_node = gr.node('cowNode')
 cow_node:translate(0, 1, -2)
 scene:add_child(cow_node)
@@ -460,6 +465,6 @@ plane:translate(0, -0.0545, 0)
 plane:scale(30, 30, 30)
 
 gr.render(scene,
-	  'sample-new.png', 512, 512,
+	  'sample.png', 512, 512,
 	  eye, view, up, fov,
 	  {0.4, 0.4, 0.4}, {mainLight})
