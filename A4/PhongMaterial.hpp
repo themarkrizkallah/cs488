@@ -1,4 +1,4 @@
-// Winter 2020
+// Spring 2020
 
 #pragma once
 
@@ -10,6 +10,10 @@ class PhongMaterial : public Material {
 public:
   PhongMaterial(const glm::vec3& kd, const glm::vec3& ks, double shininess);
   virtual ~PhongMaterial();
+
+  glm::vec3 diffuse();
+  glm::vec3 specular();
+  double shininess();
 
 private:
   glm::vec3 m_kd;

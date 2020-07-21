@@ -1,8 +1,10 @@
-// Winter 2020
+// Spring 2020
 
 #pragma once
 
 #include "Material.hpp"
+#include "Epsilon.hpp"
+#include "Ray.hpp"
 
 #include <glm/glm.hpp>
 
@@ -40,7 +42,6 @@ public:
     void scale(const glm::vec3& amount);
     void translate(const glm::vec3& amount);
 
-
 	friend std::ostream & operator << (std::ostream & os, const SceneNode & node);
 
     // Transformations
@@ -52,6 +53,14 @@ public:
 	NodeType m_nodeType;
 	std::string m_name;
 	unsigned int m_nodeId;
+
+    // Recursively check for ray-GeometryNode intersections, returning the HitRecord with the smallest t
+    HitRecord hit(
+        const Ray &r,
+        double t0,
+        double t1,
+        const glm::mat4 &worldToModel = glm::mat4()
+    ) const;
 
 private:
 	// The number of SceneNode instances.

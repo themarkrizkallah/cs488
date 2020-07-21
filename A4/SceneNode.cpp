@@ -1,17 +1,21 @@
-// Winter 2020
+// Spring 2020
 
+#include "Ray.hpp"
 #include "SceneNode.hpp"
+#include "GeometryNode.hpp"
 
 #include "cs488-framework/MathUtils.hpp"
 
 #include <iostream>
 #include <sstream>
-using namespace std;
+#include <utility>
+#include <string>
 
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include <glm/gtx/transform.hpp>
 
+using namespace std;
 using namespace glm;
 
 
@@ -135,4 +139,53 @@ std::ostream & operator << (std::ostream & os, const SceneNode & node) {
 
 	os << "]\n";
 	return os;
+}
+
+
+//---------------------------------------------------------------------------------------
+HitRecord SceneNode::hit(
+	const Ray &r,
+	double t0,
+	double t1,
+	const mat4 &worldToModel
+) const 
+{
+	HitRecord rec;
+
+	// On "the way down", transform ray by node's inverse transform
+	const mat4 accumMat = invtrans * worldToModel;
+	const Ray transformedRay = invtrans * r;
+
+	// GeometryNode, intersect primitive
+	if(m_nodeType == NodeType::GeometryNode){
+		const GeometryNode *geometryNode = static_cast<const GeometryNode *>(this);
+		HitRecord record = geometryNode->m_primitive->hit(transformedRay, t0, t1);
+
+		// Node is hit, store material in hit record
+		if(record.hit){
+			t1 = record.t;
+			rec = record;
+			rec.mat = geometryNode->m_material;
+			rec.name = &m_name;
+		}
+	}
+
+	// Check if children are hit. If child is hit, use the closest intersection
+	for(auto child : children){
+		HitRecord record = child->hit(transformedRay, t0, t1, accumMat);
+		if(record.hit){
+			t1 = record.t;
+			rec = record;
+		}
+	}
+
+	// On "the way up":
+	//	* transform intersection point by node's transformation
+	//	* transform normal with 3x3 transpose of inverse transform
+	if(rec.hit){
+		rec.point = trans * rec.point;
+		rec.n = mat4(glm::transpose(mat3(invtrans))) * rec.n;
+	}
+
+	return rec;
 }
