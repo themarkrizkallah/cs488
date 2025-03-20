@@ -14,7 +14,7 @@ libDirectories = {
 }
 
 
-if os.get() == "macosx" then
+if os.target() == "macosx" then
     linkLibs = {
         "cs488-framework",
         "imgui",
@@ -22,7 +22,7 @@ if os.get() == "macosx" then
     }
 end
 
-if os.get() == "linux" then
+if os.target() == "linux" then
     linkLibs = {
         "cs488-framework",
         "imgui",
@@ -41,13 +41,13 @@ if os.get() == "linux" then
 end
 
 -- Build Options:
-if os.get() == "macosx" then
+if os.target() == "macosx" then
     linkOptionList = { "-framework IOKit", "-framework Cocoa", "-framework CoreVideo", "-framework OpenGL" }
 end
 
 buildOptions = {"-std=c++11"}
 
-solution "CS488-Projects"
+workspace "CS488-Projects"
     configurations { "Debug", "Release" }
 
     project "TutorialExample"
@@ -63,10 +63,10 @@ solution "CS488-Projects"
         includedirs (includeDirList)
         files { "*.cpp" }
 
-    configuration "Debug"
+    filter "configurations:Debug"
         defines { "DEBUG" }
-        flags { "Symbols" }
+        symbols "On"
 
-    configuration "Release"
+    filter "configurations:Release"
         defines { "NDEBUG" }
-        flags { "Optimize" }
+        optimize "On"

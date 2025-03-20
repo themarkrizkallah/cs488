@@ -10,7 +10,7 @@ includeDirList = {
 buildOptions = {"-std=c++11"}
 
 -- Get the current OS platform
-PLATFORM = os.get()
+PLATFORM = os.target()
 
 -- Build glfw3 static library and copy it into <cs488_root>/lib if it is not
 -- already present.
@@ -43,16 +43,18 @@ if not os.isfile("lib/liblua.a") then
 end
 
 
-solution "BuildStaticLibs"
+workspace "BuildStaticLibs"
     configurations { "Debug", "Release" }
 
-    configuration "Debug"
+    filter "configurations:Debug"
         defines { "DEBUG" }
-        flags { "Symbols" }
+        symbols "On"
 
-    configuration "Release"
+    filter "configurations:Release"
         defines { "NDEBUG" }
-        flags { "Optimize" }
+        optimize "On"
+        
+    filter {}
 
     -- Builds cs488-framework static library
     project "cs488-framework"
